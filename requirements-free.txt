@@ -1,0 +1,12 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+python-telegram-bot==20.7
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+redis==5.0.1
+python-dotenv==1.0.0
+loguru==0.7.2
+aiofiles==23.2.1
+httpx==0.25.1
+psycopg2-binary==2.9.9
