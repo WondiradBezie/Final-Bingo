@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joy Bingo - Lobby</title>
+    <link rel="stylesheet" href="/webapp/css/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="game-header">
+            <h1>🎮 Joy Bingo Lobby</h1>
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">Balance</div>
+                    <div class="info-value" id="balance">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Online</div>
+                    <div class="info-value" id="online">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rooms -->
+        <div class="rooms-container" id="rooms"></div>
+
+        <!-- Leaderboard -->
+        <div class="leaderboard">
+            <h2>🏆 Leaderboard</h2>
+            <div id="leaderboard-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        const userId = tg.initDataUnsafe?.user?.id || 'test_user';
+        const username = tg.initDataUnsafe?.user?.username || 'Player';
+
+        async function loadRooms() {
+            const response = await fetch('/api/rooms');
+            const rooms = await response.json();
+            
+            const container = document.getElementById('rooms');
+            container.innerHTML = '';
+            
+            rooms.forEach(room => {
+                const card = document.createElement('div');
+                card.className = 'room-card';
+                card.onclick = () => joinRoom(room.room_id);
+                
+                card.innerHTML = `
+                    <div class="room-header">
+                        <span class="room-name">${room.name}</span>
+                        <span class="room-status status-${room.status}">${room.status}</span>
+                    </div>
+                    <div class="room-details">
+                        <span>👥 ${room.players}/${room.max_players}</span>
+                        <span>💰 ${room.prize_pool} Birr</span>
+                        <span>💵 ${room.card_price} Birr/card</span>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        async function joinRoom(roomId) {
+            // Store room selection
+            localStorage.setItem('selectedRoom', roomId);
+            
+            // Redirect to game
+            window.location.href = `/webapp/bingo_game.html?room=${roomId}&user=${userId}`;
+        }
+
+        async function loadLeaderboard() {
+            const response = await fetch('/api/leaderboard');
+            const leaderboard = await response.json();
+            
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = '';
+            
+            leaderboard.forEach((entry, index) => {
+                const item = document.createElement('div');
+                item.className = 'leaderboard-item';
+                item.innerHTML = `
+                    <span class="rank-${index + 1}">#${index + 1} ${entry.username}</span>
+                    <span>${entry.winnings} Birr (${entry.wins} wins)</span>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Load data
+        loadRooms();
+        loadLeaderboard();
+        
+        // Refresh every 5 seconds
+        setInterval(loadRooms, 5000);
+    </script>
+</body>
+</html>
