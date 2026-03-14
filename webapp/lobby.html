@@ -42,61 +42,72 @@
         const username = tg.initDataUnsafe?.user?.username || 'Player';
 
         async function loadRooms() {
-            const response = await fetch('/api/rooms');
-            const rooms = await response.json();
-            
-            const container = document.getElementById('rooms');
-            container.innerHTML = '';
-            
-            rooms.forEach(room => {
-                const card = document.createElement('div');
-                card.className = 'room-card';
-                card.onclick = () => joinRoom(room.room_id);
+            try {
+                const response = await fetch('/api/rooms');
+                const rooms = await response.json();
                 
-                card.innerHTML = `
-                    <div class="room-header">
-                        <span class="room-name">${room.name}</span>
-                        <span class="room-status status-${room.status}">${room.status}</span>
-                    </div>
-                    <div class="room-details">
-                        <span>👥 ${room.players}/${room.max_players}</span>
-                        <span>💰 ${room.prize_pool} Birr</span>
-                        <span>💵 ${room.card_price} Birr/card</span>
-                    </div>
-                `;
+                const container = document.getElementById('rooms');
+                container.innerHTML = '';
                 
-                container.appendChild(card);
-            });
+                rooms.forEach(room => {
+                    const card = document.createElement('div');
+                    card.className = 'room-card';
+                    card.onclick = () => joinRoom(room.id);
+                    
+                    card.innerHTML = `
+                        <div class="room-header">
+                            <span class="room-name">${room.name}</span>
+                            <span class="room-status status-${room.status}">${room.status}</span>
+                        </div>
+                        <div class="room-details">
+                            <span>👥 ${room.players}/${room.max_players}</span>
+                            <span>💰 ${room.prize_pool} Birr</span>
+                            <span>💵 ${room.card_price} Birr/card</span>
+                        </div>
+                        <div class="room-description">${room.description || ''}</div>
+                    `;
+                    
+                    container.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading rooms:', error);
+            }
         }
 
-        // In lobby.html, find this function and replace it:
-async function joinRoom(roomId) {
-    // Store room selection
-    localStorage.setItem('selectedRoom', roomId);
-    
-    // Get Telegram user ID
-    const userId = tg.initDataUnsafe?.user?.id || 'test_user';
-    
-    // IMPORTANT: Pass both room and user parameters
-    window.location.href = `/bingo_game.html?room=${encodeURIComponent(roomId)}&user=${encodeURIComponent(userId)}`;
-}
+        // FIXED: This function now properly passes room parameter
+        async function joinRoom(roomId) {
+            console.log('Joining room:', roomId); // Debug log
+            
+            // Store room selection
+            localStorage.setItem('selectedRoom', roomId);
+            
+            // Get Telegram user ID
+            const userId = tg.initDataUnsafe?.user?.id || 'test_user';
+            
+            // IMPORTANT: Pass both room and user parameters with encodeURIComponent
+            window.location.href = `/bingo_game.html?room=${encodeURIComponent(roomId)}&user=${encodeURIComponent(userId)}`;
+        }
 
         async function loadLeaderboard() {
-            const response = await fetch('/api/leaderboard');
-            const leaderboard = await response.json();
-            
-            const list = document.getElementById('leaderboard-list');
-            list.innerHTML = '';
-            
-            leaderboard.forEach((entry, index) => {
-                const item = document.createElement('div');
-                item.className = 'leaderboard-item';
-                item.innerHTML = `
-                    <span class="rank-${index + 1}">#${index + 1} ${entry.username}</span>
-                    <span>${entry.winnings} Birr (${entry.wins} wins)</span>
-                `;
-                list.appendChild(item);
-            });
+            try {
+                const response = await fetch('/api/leaderboard');
+                const leaderboard = await response.json();
+                
+                const list = document.getElementById('leaderboard-list');
+                list.innerHTML = '';
+                
+                leaderboard.forEach((entry, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'leaderboard-item';
+                    item.innerHTML = `
+                        <span class="rank-${index + 1}">#${index + 1} ${entry.username}</span>
+                        <span>${entry.winnings} Birr (${entry.wins} wins)</span>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Error loading leaderboard:', error);
+            }
         }
 
         // Load data
