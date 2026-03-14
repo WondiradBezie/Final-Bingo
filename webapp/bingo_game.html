@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Joy Bingo - Game</title>
-    <link rel="stylesheet" href="/webapp/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Joy Bingo</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -15,203 +14,195 @@
         }
 
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #4158D0;
+            background: linear-gradient(135deg, #4158D0 0%, #C850C0 100%);
             min-height: 100vh;
-            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
         }
 
         .game-container {
-            max-width: 1200px;
-            margin: 0 auto;
+            width: 100%;
+            max-width: 950px;
             background: white;
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            border-radius: 15px;
+            padding: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            height: fit-content;
         }
 
-        /* Header Stats */
-        .stats-bar {
+        /* Header Stats - Single Line */
+        .stats-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            padding: 15px 25px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            flex-wrap: nowrap;
+            gap: 5px;
         }
 
-        .stat-item {
+        .stat-block {
             text-align: center;
+            min-width: 45px;
         }
 
         .stat-label {
-            font-size: 0.8rem;
+            font-size: 9px;
             opacity: 0.9;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
         }
 
         .stat-value {
-            font-size: 1.5rem;
+            font-size: 16px;
             font-weight: bold;
+            line-height: 1.2;
         }
 
         .game-title {
-            font-size: 1.8rem;
+            font-size: 16px;
             font-weight: bold;
-            background: white;
-            color: #6366f1;
-            padding: 5px 20px;
-            border-radius: 30px;
+            background: rgba(255,255,255,0.2);
+            padding: 4px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
         }
 
-        /* Main Game Area - Two Columns */
-        .game-area {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
+        /* Main Content - Two Columns */
+        .main-content {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
         }
 
         /* Left Side - Number Board */
         .number-board {
-            background: #f8fafc;
-            border-radius: 15px;
-            padding: 15px;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 8px;
+            border: 1px solid #e0e0e0;
         }
 
         .board-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding: 0 10px;
+            margin-bottom: 6px;
+            padding: 0 2px;
         }
 
         .board-title {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #1f2937;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
         }
 
-        .called-count {
-            background: #ef4444;
+        .called-badge {
+            background: #ff4444;
             color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.9rem;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 9px;
             font-weight: bold;
         }
 
-        .number-grid {
+        .numbers-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            gap: 3px;
         }
 
         .number-column {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 2px;
         }
 
         .column-header {
             text-align: center;
             font-weight: bold;
-            font-size: 1.2rem;
-            padding: 5px;
-            border-radius: 6px;
-            margin-bottom: 5px;
+            font-size: 11px;
+            padding: 2px;
+            border-radius: 4px;
+            margin-bottom: 2px;
         }
 
-        .column-header.b { background: #fee2e2; color: #b91c1c; }
-        .column-header.i { background: #fff3cd; color: #856404; }
-        .column-header.n { background: #d1e7dd; color: #0f5132; }
-        .column-header.g { background: #cfe2ff; color: #084298; }
-        .column-header.o { background: #e2d5f3; color: #562ab0; }
+        .column-header.b { background: #ffcdd2; color: #b71c1c; }
+        .column-header.i { background: #fff9c4; color: #f57f17; }
+        .column-header.n { background: #c8e6c9; color: #1b5e20; }
+        .column-header.g { background: #bbdefb; color: #0d47a1; }
+        .column-header.o { background: #e1bee7; color: #4a148c; }
 
         .number-cell {
             aspect-ratio: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.9rem;
+            font-size: 10px;
             font-weight: 600;
-            background: #f1f5f9;
-            border-radius: 6px;
-            cursor: default;
-            transition: all 0.2s;
-            color: #1e293b;
-            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 4px;
+            color: #333;
+            border: 1px solid #dee2e6;
         }
 
         .number-cell.called {
-            background: #10b981;
-            color: white;
-            transform: scale(1.05);
-            box-shadow: 0 2px 8px rgba(16,185,129,0.3);
-            border-color: #059669;
+            background: #4caf50 !important;
+            color: white !important;
+            border-color: #2e7d32;
         }
-
-        .number-cell.b-range { background: #fee2e2; }
-        .number-cell.i-range { background: #fff3cd; }
-        .number-cell.n-range { background: #d1e7dd; }
-        .number-cell.g-range { background: #cfe2ff; }
-        .number-cell.o-range { background: #e2d5f3; }
 
         /* Right Side - Player Card */
         .player-card {
-            background: #f8fafc;
-            border-radius: 15px;
-            padding: 15px;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 8px;
+            border: 1px solid #e0e0e0;
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding: 0 10px;
+            margin-bottom: 6px;
+            padding: 0 2px;
         }
 
         .card-title {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #1f2937;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
         }
 
         .card-number {
-            background: #6366f1;
+            background: #833AB4;
             color: white;
-            padding: 4px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 9px;
             font-weight: bold;
         }
 
         .bingo-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            gap: 3px;
         }
 
         .player-column {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 2px;
         }
 
         .player-cell {
@@ -219,295 +210,296 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.1rem;
-            font-weight: bold;
-            background: #f1f5f9;
-            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            background: white;
+            border-radius: 4px;
+            color: #333;
+            border: 1px solid #dee2e6;
             cursor: pointer;
-            transition: all 0.2s;
-            color: #1e293b;
-            border: 1px solid #e2e8f0;
         }
 
         .player-cell.header {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            font-size: 1.3rem;
-            cursor: default;
+            font-size: 12px;
+            font-weight: bold;
             border: none;
+            cursor: default;
         }
 
         .player-cell.marked {
-            background: #10b981 !important;
-            color: white;
-            transform: scale(0.95);
-            border-color: #059669;
+            background: #4caf50 !important;
+            color: white !important;
+            border-color: #2e7d32;
         }
 
-        .player-cell:not(.header):hover {
-            transform: scale(1.05);
-            background: #e2e8f0;
-        }
-
-        .player-cell.free-space {
-            background: linear-gradient(135deg, #ffd700, #ffa500);
-            color: #000;
+        .player-cell.free {
+            background: #ffd700;
+            color: #333;
             font-weight: bold;
         }
 
-        .player-cell.free-space.marked {
-            background: linear-gradient(135deg, #10b981, #059669) !important;
-            color: white;
+        .player-cell.free.marked {
+            background: #4caf50 !important;
+            color: white !important;
         }
 
-        /* Current Call Display */
-        .current-call-area {
-            background: linear-gradient(135deg, #f43f5e, #e11d48);
-            color: white;
-            padding: 15px 25px;
-            border-radius: 15px;
-            margin: 20px 0;
+        /* Current Call - Now positioned above the card */
+        .current-call-section {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
+            background: #ff4444;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .call-left {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
         }
 
         .call-label {
-            font-size: 1rem;
+            font-size: 12px;
             opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }
 
-        .call-number {
-            font-size: 3rem;
+        .call-number-big {
+            font-size: 24px;
             font-weight: bold;
-            line-height: 1;
         }
 
-        .call-letter {
-            font-size: 2rem;
-            opacity: 0.9;
+        .call-letter-big {
+            font-size: 18px;
+            font-weight: bold;
         }
 
         .recent-calls {
             display: flex;
-            gap: 10px;
-            align-items: center;
+            gap: 5px;
         }
 
         .recent-ball {
-            width: 40px;
-            height: 40px;
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            color: white;
-            background: rgba(255,255,255,0.2);
-            font-size: 1rem;
+            font-size: 12px;
         }
 
-        /* Bottom Status */
-        .game-status {
-            text-align: center;
-            padding: 15px;
-            background: #f1f5f9;
-            border-radius: 10px;
-            color: #64748b;
-            font-size: 0.9rem;
-            margin-top: 20px;
+        /* Bingo Button - Always active, positioned at bottom */
+        .bingo-section {
+            margin-top: 10px;
         }
 
-        /* Bingo Button */
         .bingo-btn {
             width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
+            padding: 12px;
+            background: #ff4444;
             color: white;
             border: none;
-            border-radius: 10px;
-            font-size: 1.5rem;
+            border-radius: 8px;
+            font-size: 18px;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 15px;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
+            transition: all 0.2s;
         }
 
-        .bingo-btn:hover:not(:disabled) {
+        .bingo-btn:hover {
+            background: #ff6666;
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(245,158,11,0.3);
         }
 
-        .bingo-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .bingo-btn:active {
+            transform: translateY(0);
         }
 
-        /* Card Selection Grid */
-        .card-selection {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
+        /* Status Text */
+        .status-text {
+            text-align: center;
+            color: #666;
+            font-size: 11px;
+            margin-top: 8px;
+            padding: 5px;
+            background: #f1f5f9;
+            border-radius: 6px;
         }
 
-        .selection-grid {
+        /* Card Selection Screen */
+        .selection-screen {
+            padding: 0;
+        }
+
+        .selection-header {
+            background: linear-gradient(135deg, #405DE6, #833AB4);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .selection-title {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .selection-subtitle {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .cards-grid {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
-            gap: 8px;
-            max-height: 400px;
+            gap: 4px;
+            max-height: 350px;
             overflow-y: auto;
-            padding: 15px;
-            background: #f8fafc;
-            border-radius: 12px;
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 8px;
         }
 
-        .card-option {
-            padding: 12px 4px;
-            font-size: 1rem;
+        .card-btn {
+            padding: 8px 2px;
+            font-size: 11px;
             font-weight: 600;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
             background: white;
             cursor: pointer;
-            transition: all 0.2s;
             text-align: center;
         }
 
-        .card-option:hover:not(:disabled) {
-            border-color: #6366f1;
-            background: #f0f9ff;
-            transform: translateY(-2px);
-        }
-
-        .card-option.taken {
-            background: #fee2e2;
-            border-color: #ef4444;
-            opacity: 0.6;
+        .card-btn.taken {
+            background: #ffcdd2;
+            border-color: #ef9a9a;
+            color: #b71c1c;
             cursor: not-allowed;
+            opacity: 0.6;
         }
 
-        .card-option.selected {
-            background: #10b981;
-            border-color: #059669;
+        .card-btn.selected {
+            background: #4caf50;
             color: white;
+            border-color: #2e7d32;
         }
 
         .loading {
             text-align: center;
-            padding: 40px;
-            color: #6b7280;
-            font-size: 1.2rem;
+            padding: 30px;
+            color: #666;
+            font-size: 14px;
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); box-shadow: 0 0 20px #6366f1; }
-            100% { transform: scale(1); }
+        .hidden {
+            display: none !important;
         }
 
-        .pulse {
-            animation: pulse 0.5s ease-out;
+        .cards-grid::-webkit-scrollbar {
+            width: 3px;
+        }
+        
+        .cards-grid::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
         }
     </style>
 </head>
 <body>
     <div class="game-container">
         <!-- Card Selection Screen -->
-        <div id="card-selection">
-            <div class="stats-bar">
-                <div class="game-title">🎮 Joy Bingo</div>
-                <div class="stat-item">
-                    <div class="stat-label">Select Your Card</div>
-                    <div class="stat-value">1-400</div>
-                </div>
+        <div id="selectionScreen" class="selection-screen">
+            <div class="selection-header">
+                <span class="selection-title">🎮 Joy Bingo</span>
+                <span class="selection-subtitle">Select Card (1-400)</span>
             </div>
-            <div class="card-selection">
-                <div class="loading" id="loading-cards">Loading available cards...</div>
-                <div class="selection-grid" id="card-grid" style="display: none;"></div>
-            </div>
+            <div class="loading" id="loadingCards">Loading available cards...</div>
+            <div class="cards-grid" id="cardsGrid"></div>
         </div>
 
-        <!-- Game Board Screen -->
-        <div id="game-board" style="display: none;">
-            <!-- Top Stats Bar -->
-            <div class="stats-bar">
-                <div class="game-title">🎮 Joy Bingo</div>
-                <div class="stat-item">
-                    <div class="stat-label">Derash</div>
-                    <div class="stat-value" id="derash">0</div>
+        <!-- Game Screen -->
+        <div id="gameScreen" class="hidden">
+            <!-- Top Stats Bar - Single Line -->
+            <div class="stats-row">
+                <div class="game-title">🎮 JOY</div>
+                <div class="stat-block">
+                    <div class="stat-label">DERASH</div>
+                    <div class="stat-value" id="derash">3056</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-label">Players</div>
-                    <div class="stat-value" id="player-count">0</div>
+                <div class="stat-block">
+                    <div class="stat-label">PLAYERS</div>
+                    <div class="stat-value" id="player-count">382</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-label">Bet</div>
+                <div class="stat-block">
+                    <div class="stat-label">BET</div>
                     <div class="stat-value" id="bet">10</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-label">Call</div>
-                    <div class="stat-value" id="call-interval">2</div>
+                <div class="stat-block">
+                    <div class="stat-label">CALL</div>
+                    <div class="stat-value" id="call-interval">1</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-label">Game №</div>
+                <div class="stat-block">
+                    <div class="stat-label">GAME №</div>
                     <div class="stat-value" id="game-number">1 of 1</div>
                 </div>
             </div>
 
             <!-- Main Game Area -->
-            <div class="game-area">
-                <!-- Left Side - Number Board (Column-wise) -->
+            <div class="main-content">
+                <!-- Left Side - Number Board -->
                 <div class="number-board">
                     <div class="board-header">
-                        <span class="board-title">📋 Called Numbers</span>
-                        <span class="called-count" id="called-count">0/75</span>
+                        <span class="board-title">📋 CALLED NUMBERS</span>
+                        <span class="called-badge" id="called-count">0/75</span>
                     </div>
-                    <div class="number-grid" id="number-board">
-                        <!-- Generated by JavaScript - 5 columns -->
-                    </div>
+                    <div class="numbers-grid" id="number-board"></div>
                 </div>
 
-                <!-- Right Side - Player Card (Column-wise) -->
+                <!-- Right Side - Player Card -->
                 <div class="player-card">
                     <div class="card-header">
-                        <span class="card-title">🎴 Your Card</span>
+                        <span class="card-title">🎴 YOUR CARD</span>
                         <span class="card-number" id="selected-card-num">#0</span>
                     </div>
-                    <div class="bingo-grid" id="bingo-grid">
-                        <!-- Generated by JavaScript - 5 columns -->
-                    </div>
+                    <div class="bingo-grid" id="bingo-grid"></div>
                 </div>
             </div>
 
-            <!-- Current Call Display -->
-            <div class="current-call-area">
-                <div>
-                    <div class="call-label">Current Call</div>
-                    <div>
-                        <span class="call-letter" id="current-letter">B</span>
-                        <span class="call-number" id="current-number">12</span>
-                    </div>
+            <!-- Current Call Section - Positioned above bingo button -->
+            <div class="current-call-section">
+                <div class="call-left">
+                    <span class="call-label">CURRENT CALL</span>
+                    <span class="call-letter-big" id="current-letter">G</span>
+                    <span class="call-number-big" id="current-number">52</span>
                 </div>
-                <div>
-                    <div class="call-label">Recent Calls</div>
-                    <div class="recent-calls" id="recent-calls">
-                        <!-- Generated by JavaScript -->
-                    </div>
+                <div class="recent-calls" id="recent-calls">
+                    <div class="recent-ball">52</div>
+                    <div class="recent-ball">48</div>
+                    <div class="recent-ball">45</div>
                 </div>
             </div>
 
-            <!-- Bingo Button -->
-            <button class="bingo-btn" id="bingo-btn" onclick="callBingo()" disabled>🎯 CALL BINGO!</button>
+            <!-- Bingo Button - Always active -->
+            <div class="bingo-section">
+                <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 CALL BINGO!</button>
+            </div>
 
-            <!-- Game Status -->
-            <div class="game-status" id="game-status">
+            <!-- Status Text -->
+            <div class="status-text" id="status">
                 Please wait for this game to be completed
             </div>
         </div>
@@ -516,31 +508,30 @@
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        tg.disableVerticalSwipes();
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room') || 'classic';
-        const userId = urlParams.get('user') || tg.initDataUnsafe?.user?.id || 'test_user';
+        const userId = urlParams.get('user') || tg.initDataUnsafe?.user?.id || 'test';
         const username = tg.initDataUnsafe?.user?.username || 'Player';
 
+        // Game state
         let selectedCard = null;
         let takenCards = [];
-        let gameState = {
-            card: [],
-            marked: new Set(),
-            calledNumbers: [],
-            gameActive: false,
-            cardNumber: null
-        };
+        let calledNumbers = [52, 48, 45, 42, 38, 35, 31, 28, 24, 21];
+        let markedNumbers = new Set(['FREE']);
+        let gameActive = true;
+        let currentCard = [];
+        let cardNumber = null;
 
-        // Initialize number board (1-75) in column-wise format
+        // Initialize number board (column-wise)
         function initNumberBoard() {
             const board = document.getElementById('number-board');
             board.innerHTML = '';
             
-            // Column headers
             const columns = ['B', 'I', 'N', 'G', 'O'];
-            const columnRanges = [
+            const ranges = [
                 {min: 1, max: 15},
                 {min: 16, max: 30},
                 {min: 31, max: 45},
@@ -548,173 +539,85 @@
                 {min: 61, max: 75}
             ];
             
-            // Create 5 columns
             for (let col = 0; col < 5; col++) {
                 const columnDiv = document.createElement('div');
                 columnDiv.className = 'number-column';
                 
-                // Add column header
                 const header = document.createElement('div');
                 header.className = `column-header ${columns[col].toLowerCase()}`;
                 header.textContent = columns[col];
                 columnDiv.appendChild(header);
                 
-                // Add numbers in this column (1-15 for B, 16-30 for I, etc.)
-                for (let num = columnRanges[col].min; num <= columnRanges[col].max; num++) {
+                for (let num = ranges[col].min; num <= ranges[col].max; num++) {
                     const cell = document.createElement('div');
                     cell.className = 'number-cell';
                     cell.id = `num-${num}`;
                     cell.textContent = num;
                     
-                    // Add range class for coloring
-                    if (num <= 15) cell.classList.add('b-range');
-                    else if (num <= 30) cell.classList.add('i-range');
-                    else if (num <= 45) cell.classList.add('n-range');
-                    else if (num <= 60) cell.classList.add('g-range');
-                    else cell.classList.add('o-range');
+                    if (calledNumbers.includes(num)) {
+                        cell.classList.add('called');
+                    }
                     
                     columnDiv.appendChild(cell);
                 }
                 
                 board.appendChild(columnDiv);
             }
+            
+            document.getElementById('called-count').textContent = `${calledNumbers.length}/75`;
         }
 
-        // Load available cards
-        async function loadCards() {
-            document.getElementById('loading-cards').style.display = 'block';
-            document.getElementById('card-grid').style.display = 'none';
-            
-            try {
-                // Fetch taken cards
-                const response = await fetch(`/api/game/taken_cards/${roomId}`);
-                const data = await response.json();
-                takenCards = data.taken_cards || [];
-                
-                // Build card grid
-                const grid = document.getElementById('card-grid');
-                grid.innerHTML = '';
-                
-                for (let i = 1; i <= 400; i++) {
-                    const cardNum = i.toString();
-                    const btn = document.createElement('button');
-                    btn.className = 'card-option';
-                    btn.textContent = cardNum;
-                    btn.dataset.cardNum = cardNum;
-                    
-                    if (takenCards.includes(cardNum)) {
-                        btn.disabled = true;
-                        btn.classList.add('taken');
-                    }
-                    
-                    btn.onclick = () => selectCard(i);
-                    grid.appendChild(btn);
+        // Generate demo card
+        function generateDemoCard(cardNum) {
+            const card = [];
+            for (let col = 0; col < 5; col++) {
+                const start = col * 15 + 1;
+                const nums = [];
+                while (nums.length < 5) {
+                    const num = Math.floor(Math.random() * 15) + start;
+                    if (!nums.includes(num)) nums.push(num);
                 }
-                
-                document.getElementById('loading-cards').style.display = 'none';
-                document.getElementById('card-grid').style.display = 'grid';
-                
-            } catch (error) {
-                console.error('Error loading cards:', error);
+                card.push(...nums);
             }
+            return card;
         }
 
-        // Select a card
-        async function selectCard(cardNumber) {
-            if (takenCards.includes(cardNumber.toString())) {
-                alert('This card is already taken!');
-                return;
-            }
-            
-            selectedCard = cardNumber;
-            
-            // Update UI
-            document.querySelectorAll('.card-option').forEach(btn => {
-                if (btn.dataset.cardNum === cardNumber.toString()) {
-                    btn.classList.add('selected');
-                }
-            });
-            
-            const response = await fetch('/api/game/select_card', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_id: userId,
-                    room_id: roomId,
-                    card_number: cardNumber,
-                    username: username
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                // Switch to game board
-                document.getElementById('card-selection').style.display = 'none';
-                document.getElementById('game-board').style.display = 'block';
-                
-                // Initialize game
-                gameState.card = result.game_state.card;
-                gameState.marked = new Set();
-                gameState.gameActive = true;
-                gameState.cardNumber = cardNumber;
-                
-                // Mark FREE space (center - position 12)
-                gameState.marked.add('FREE');
-                
-                document.getElementById('selected-card-num').textContent = `#${cardNumber}`;
-                
-                // Initialize displays
-                initNumberBoard();
-                renderBingoCard();
-                startGame();
-            } else {
-                alert(result.error || 'Failed to select card');
-            }
-        }
-
-        // Render player's bingo card in column-wise format
+        // Render bingo card (column-wise)
         function renderBingoCard() {
             const grid = document.getElementById('bingo-grid');
             grid.innerHTML = '';
             
-            // Column headers
             const columns = ['B', 'I', 'N', 'G', 'O'];
             
-            // Create 5 columns
             for (let col = 0; col < 5; col++) {
                 const columnDiv = document.createElement('div');
                 columnDiv.className = 'player-column';
                 
-                // Add column header
                 const header = document.createElement('div');
                 header.className = 'player-cell header';
                 header.textContent = columns[col];
                 columnDiv.appendChild(header);
                 
-                // Add numbers in this column (5 rows)
                 for (let row = 0; row < 5; row++) {
-                    const index = row * 5 + col; // Column-major order
+                    const index = row * 5 + col;
                     const cell = document.createElement('div');
                     cell.className = 'player-cell';
                     
-                    if (index === 12) { // Center FREE space
+                    if (index === 12) {
                         cell.textContent = '⭐';
-                        cell.classList.add('free-space');
-                        if (gameState.marked.has('FREE')) {
+                        cell.classList.add('free');
+                        if (markedNumbers.has('FREE')) {
                             cell.classList.add('marked');
                         }
                     } else {
-                        const number = gameState.card[index];
-                        cell.textContent = number;
+                        const num = currentCard[index];
+                        cell.textContent = num;
                         
-                        // Add click handler for manual marking
-                        cell.onclick = () => markNumber(number);
-                        
-                        // Check if already marked
-                        if (gameState.marked.has(number)) {
+                        if (markedNumbers.has(num)) {
                             cell.classList.add('marked');
                         }
+                        
+                        cell.onclick = () => markNumber(num);
                     }
                     
                     columnDiv.appendChild(cell);
@@ -724,205 +627,227 @@
             }
         }
 
-        // Mark a number on player's card
-        async function markNumber(number) {
-            if (!gameState.gameActive) {
-                alert('Game not active!');
+        // Mark a number
+        function markNumber(num) {
+            if (!calledNumbers.includes(num)) {
+                alert(`Number ${num} hasn't been called yet!`);
                 return;
             }
+            if (markedNumbers.has(num)) return;
             
-            if (!gameState.calledNumbers.includes(number)) {
-                alert(`❌ Number ${number} hasn't been called yet!`);
-                return;
+            markedNumbers.add(num);
+            renderBingoCard();
+            
+            if (checkForBingo()) {
+                document.getElementById('status').textContent = "🎉 BINGO! You won! 🎉";
+                document.getElementById('status').style.background = '#4caf50';
+                document.getElementById('status').style.color = 'white';
             }
-            
-            if (gameState.marked.has(number)) {
-                alert(`Number ${number} is already marked!`);
-                return;
-            }
-            
-            const response = await fetch('/api/game/mark_number', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_id: userId,
-                    room_id: roomId,
-                    number: number
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                gameState.marked.add(number);
-                updateMarkedCell(number);
-                
-                if (checkForBingo()) {
-                    document.getElementById('bingo-btn').disabled = false;
-                }
-            }
-        }
-
-        // Update a single marked cell
-        function updateMarkedCell(number) {
-            const columns = document.querySelectorAll('#bingo-grid .player-column');
-            columns.forEach(column => {
-                const cells = column.querySelectorAll('.player-cell:not(.header)');
-                cells.forEach(cell => {
-                    if (cell.textContent === number.toString() || (number === 'FREE' && cell.textContent === '⭐')) {
-                        cell.classList.add('marked');
-                    }
-                });
-            });
         }
 
         // Check for bingo
         function checkForBingo() {
-            // Check rows (across columns)
             for (let row = 0; row < 5; row++) {
-                let rowComplete = true;
+                let win = true;
                 for (let col = 0; col < 5; col++) {
-                    const index = row * 5 + col;
-                    const num = index === 12 ? 'FREE' : gameState.card[index];
-                    if (!gameState.marked.has(num)) {
-                        rowComplete = false;
+                    const idx = row * 5 + col;
+                    const num = idx === 12 ? 'FREE' : currentCard[idx];
+                    if (!markedNumbers.has(num)) {
+                        win = false;
                         break;
                     }
                 }
-                if (rowComplete) return true;
+                if (win) return true;
             }
             
-            // Check columns
             for (let col = 0; col < 5; col++) {
-                let colComplete = true;
+                let win = true;
                 for (let row = 0; row < 5; row++) {
-                    const index = row * 5 + col;
-                    const num = index === 12 ? 'FREE' : gameState.card[index];
-                    if (!gameState.marked.has(num)) {
-                        colComplete = false;
+                    const idx = row * 5 + col;
+                    const num = idx === 12 ? 'FREE' : currentCard[idx];
+                    if (!markedNumbers.has(num)) {
+                        win = false;
                         break;
                     }
                 }
-                if (colComplete) return true;
+                if (win) return true;
             }
             
             return false;
         }
 
-        // Call bingo
+        // Call bingo - always active
         async function callBingo() {
-            const response = await fetch('/api/game/call_bingo', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_id: userId,
-                    room_id: roomId
-                })
+            if (checkForBingo()) {
+                alert('🎉 BINGO! You win! 🎉');
+            } else {
+                alert('You don\'t have bingo yet! Keep playing!');
+            }
+        }
+
+        // Load cards
+        async function loadCards() {
+            try {
+                let takenCardsData = [];
+                try {
+                    const response = await fetch(`/api/game/taken_cards/${roomId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        takenCardsData = data.taken_cards || [];
+                    }
+                } catch (e) {
+                    takenCardsData = Array.from({length: 40}, () => Math.floor(Math.random() * 400) + 1).map(String);
+                }
+                
+                takenCards = takenCardsData;
+                
+                const grid = document.getElementById('cardsGrid');
+                grid.innerHTML = '';
+                document.getElementById('loadingCards').style.display = 'none';
+                
+                for (let i = 1; i <= 400; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'card-btn';
+                    btn.textContent = i;
+                    btn.dataset.cardNum = i;
+                    
+                    if (takenCards.includes(i.toString())) {
+                        btn.classList.add('taken');
+                        btn.disabled = true;
+                    }
+                    
+                    btn.onclick = () => selectCard(i);
+                    grid.appendChild(btn);
+                }
+            } catch (error) {
+                console.error('Error loading cards:', error);
+            }
+        }
+
+        // Select a card
+        async function selectCard(cardNum) {
+            if (takenCards.includes(cardNum.toString())) {
+                alert('This card is already taken!');
+                return;
+            }
+            
+            selectedCard = cardNum;
+            
+            document.querySelectorAll('.card-btn').forEach(btn => {
+                if (btn.dataset.cardNum == cardNum) {
+                    btn.classList.add('selected');
+                }
             });
             
-            const result = await response.json();
-            
-            if (result.success) {
-                alert(`🎉 BINGO! You win ${result.prize} Birr!`);
-                gameState.gameActive = false;
-            } else {
-                alert(result.message);
+            try {
+                let cardData = null;
+                try {
+                    const response = await fetch('/api/game/select_card', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            user_id: userId,
+                            room_id: roomId,
+                            card_number: cardNum,
+                            username: username
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success) {
+                            cardData = result.game_state.card;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Using demo card');
+                }
+                
+                if (!cardData) {
+                    cardData = generateDemoCard(cardNum);
+                }
+                
+                document.getElementById('selectionScreen').style.display = 'none';
+                document.getElementById('gameScreen').classList.remove('hidden');
+                
+                currentCard = cardData;
+                cardNumber = cardNum;
+                
+                document.getElementById('selected-card-num').textContent = `#${cardNum}`;
+                
+                initNumberBoard();
+                renderBingoCard();
+                updateCurrentCall(calledNumbers[calledNumbers.length - 1] || 52);
+                
+                startGame();
+                
+            } catch (error) {
+                console.error('Error selecting card:', error);
+                alert('Failed to select card');
             }
         }
 
-        // Update number board with called numbers
-        function updateNumberBoard(number) {
-            const cell = document.getElementById(`num-${number}`);
-            if (cell) {
-                cell.classList.add('called');
-            }
-            
-            // Update called count
-            document.getElementById('called-count').textContent = `${gameState.calledNumbers.length}/75`;
-        }
-
-        // Update current call display
-        function updateCurrentCall(number) {
+        // Update current call
+        function updateCurrentCall(num) {
             let letter = '';
-            if (number <= 15) letter = 'B';
-            else if (number <= 30) letter = 'I';
-            else if (number <= 45) letter = 'N';
-            else if (number <= 60) letter = 'G';
+            if (num <= 15) letter = 'B';
+            else if (num <= 30) letter = 'I';
+            else if (num <= 45) letter = 'N';
+            else if (num <= 60) letter = 'G';
             else letter = 'O';
             
             document.getElementById('current-letter').textContent = letter;
-            document.getElementById('current-number').textContent = number;
-        }
-
-        // Update recent calls
-        function updateRecentCalls() {
-            const container = document.getElementById('recent-calls');
-            container.innerHTML = '';
+            document.getElementById('current-number').textContent = num;
             
-            const recent = gameState.calledNumbers.slice(-3);
-            recent.forEach(num => {
+            const recent = document.getElementById('recent-calls');
+            recent.innerHTML = '';
+            calledNumbers.slice(-3).forEach(n => {
                 const ball = document.createElement('div');
                 ball.className = 'recent-ball';
-                ball.textContent = num;
-                container.appendChild(ball);
+                ball.textContent = n;
+                recent.appendChild(ball);
             });
         }
 
-        // Start game simulation
+        // Add called number
+        function addCalledNumber(num) {
+            if (!calledNumbers.includes(num)) {
+                calledNumbers.push(num);
+                
+                const cell = document.getElementById(`num-${num}`);
+                if (cell) cell.classList.add('called');
+                
+                document.getElementById('called-count').textContent = `${calledNumbers.length}/75`;
+                updateCurrentCall(num);
+            }
+        }
+
+        // Start game
         function startGame() {
-            // Update stats periodically
-            setInterval(async () => {
-                try {
-                    const response = await fetch('/api/rooms/' + roomId);
-                    const room = await response.json();
-                    const players = room.players || 77;
-                    document.getElementById('player-count').textContent = players;
-                    // Derash = players × 10
-                    document.getElementById('derash').textContent = players * 10;
-                } catch (e) {
-                    // Fallback to demo values
-                    const players = 77;
-                    document.getElementById('player-count').textContent = players;
-                    document.getElementById('derash').textContent = players * 10;
-                }
+            // Update stats
+            setInterval(() => {
+                const players = 382;
+                document.getElementById('player-count').textContent = players;
+                document.getElementById('derash').textContent = players * 10;
             }, 2000);
             
             // Simulate number calls
             setInterval(() => {
-                if (!gameState.gameActive) return;
+                if (!gameActive) return;
                 
-                if (gameState.calledNumbers.length < 75) {
+                if (calledNumbers.length < 75) {
                     let num;
                     do {
                         num = Math.floor(Math.random() * 75) + 1;
-                    } while (gameState.calledNumbers.includes(num));
+                    } while (calledNumbers.includes(num));
                     
-                    gameState.calledNumbers.push(num);
-                    
-                    // Update displays
-                    updateNumberBoard(num);
-                    updateCurrentCall(num);
-                    updateRecentCalls();
-                    
-                    // Highlight if on player's card
-                    if (gameState.card.includes(num)) {
-                        const columns = document.querySelectorAll('#bingo-grid .player-column');
-                        columns.forEach(column => {
-                            const cells = column.querySelectorAll('.player-cell:not(.header)');
-                            cells.forEach(cell => {
-                                if (cell.textContent === num.toString()) {
-                                    cell.classList.add('pulse');
-                                    setTimeout(() => cell.classList.remove('pulse'), 500);
-                                }
-                            });
-                        });
-                    }
+                    addCalledNumber(num);
                 }
             }, 3000);
         }
 
         // Initialize
-        loadCards();
+        document.addEventListener('DOMContentLoaded', loadCards);
     </script>
 </body>
 </html>
