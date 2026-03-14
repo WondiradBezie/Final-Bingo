@@ -248,6 +248,199 @@ async def join_room(room_id: str, request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
 
+# Add this after your existing room endpoints (around line 200)
+
+# Game state storage (simple in-memory for now)
+games_data = {}
+player_sessions = {}
+
+@app.post("/api/rooms/{room_id}/join")
+async def join_room_endpoint(room_id: str, request: Request):
+    """Join a specific room"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        username = data.get("username", "Player")
+        
+        if room_id not in rooms_data:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "Room not found"}
+            )
+        
+        # Create a game session for this user
+        session_id = f"{room_id}_{user_id}_{datetime.now().timestamp()}"
+        player_sessions[user_id] = {
+            "room_id": room_id,
+            "session_id": session_id,
+            "joined_at": datetime.now().isoformat(),
+            "username": username
+        }
+        
+        # Increment player count
+        rooms_data[room_id]["players"] += 1
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"Welcome to {rooms_data[room_id]['name']}!",
+            "room": rooms_data[room_id],
+            "session_id": session_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error joining room: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.get("/api/game/state/{user_id}")
+async def get_game_state(user_id: str):
+    """Get current game state for a user"""
+    if user_id in player_sessions:
+        return JSONResponse({
+            "success": True,
+            "state": {
+                "in_game": True,
+                "room": player_sessions[user_id].get("room_id"),
+                "joined_at": player_sessions[user_id].get("joined_at")
+            }
+        })
+    return JSONResponse({
+        "success": True,
+        "state": {"in_game": False}
+    })
+
+@app.post("/api/game/select_card")
+async def select_card(request: Request):
+    """Select a bingo card"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        room_id = data.get("room_id")
+        card_number = data.get("card_number")
+        
+        # Simple validation
+        if not all([user_id, room_id, card_number]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing required fields"}
+            )
+        
+        # Store card selection
+        game_key = f"game:{room_id}:{user_id}"
+        games_data[game_key] = {
+            "user_id": user_id,
+            "room_id": room_id,
+            "card_number": card_number,
+            "marked_numbers": [],
+            "selected_at": datetime.now().isoformat()
+        }
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"Card #{card_number} selected!",
+            "game_state": {
+                "card": generate_sample_card(card_number),
+                "marked": []
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error selecting card: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+def generate_sample_card(card_number):
+    """Generate a sample bingo card (replace with actual card generation)"""
+    import random
+    card = []
+    for col in range(5):
+        start = col * 15 + 1
+        numbers = random.sample(range(start, start + 15), 5)
+        card.extend(numbers)
+    return card
+
+@app.post("/api/game/mark_number")
+async def mark_number(request: Request):
+    """Mark a number on player's card"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        number = data.get("number")
+        room_id = data.get("room_id")
+        
+        game_key = f"game:{room_id}:{user_id}"
+        
+        if game_key not in games_data:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "Game not found"}
+            )
+        
+        # Add to marked numbers
+        if number not in games_data[game_key]["marked_numbers"]:
+            games_data[game_key]["marked_numbers"].append(number)
+        
+        # Check for bingo (simplified)
+        marked_count = len(games_data[game_key]["marked_numbers"])
+        has_bingo = marked_count >= 5  # Simplified condition
+        
+        return JSONResponse({
+            "success": True,
+            "marked": games_data[game_key]["marked_numbers"],
+            "bingo": has_bingo
+        })
+        
+    except Exception as e:
+        logger.error(f"Error marking number: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/api/game/call_bingo")
+async def call_bingo(request: Request):
+    """Player calls bingo"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        room_id = data.get("room_id")
+        
+        game_key = f"game:{room_id}:{user_id}"
+        
+        if game_key not in games_data:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "Game not found"}
+            )
+        
+        # Verify bingo (simplified)
+        marked_count = len(games_data[game_key]["marked_numbers"])
+        is_valid = marked_count >= 5
+        
+        if is_valid:
+            return JSONResponse({
+                "success": True,
+                "message": "BINGO! You win!",
+                "prize": 100  # Placeholder prize
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "You don't have bingo yet!"
+            })
+            
+    except Exception as e:
+        logger.error(f"Error calling bingo: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+
 # WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
