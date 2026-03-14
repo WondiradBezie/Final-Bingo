@@ -37,6 +37,24 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
+# Add this near your other @app routes (like @app.get("/"))
+@app.post("/api/webhook")
+async def telegram_webhook(request: Request):
+    """Receive updates from Telegram"""
+    try:
+        # Log that we received something
+        update_data = await request.json()
+        logger.info(f"📨 Received webhook update: {update_data}")
+
+        # TODO: Add your bot logic here to process the update and reply
+        # For now, we'll just acknowledge receipt
+        # You'll need to integrate your python-telegram-bot logic here
+
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"❌ Webhook error: {e}")
+        return JSONResponse(status_code=200, content={"ok": False, "error": str(e)})
+
 @app.get("/health")
 async def health_check():
     return {
