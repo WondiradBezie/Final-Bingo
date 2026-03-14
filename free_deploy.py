@@ -1,3 +1,4 @@
+
 # free_deploy.py
 import os
 import json
@@ -13,6 +14,7 @@ import uvicorn
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, ContextTypes
 import httpx
+import random
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -226,36 +228,12 @@ async def get_room(room_id: str):
         return JSONResponse(rooms_data[room_id])
     return JSONResponse({"error": "Room not found"}, status_code=404)
 
-@app.post("/api/rooms/{room_id}/join")
-async def join_room(room_id: str, request: Request):
-    """Join a room"""
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        username = data.get("username")
-        
-        if room_id not in rooms_data:
-            return JSONResponse({"success": False, "error": "Room not found"})
-        
-        # Simple room joining logic
-        rooms_data[room_id]["players"] += 1
-        
-        return JSONResponse({
-            "success": True,
-            "room": rooms_data[room_id],
-            "message": f"Welcome {username} to {rooms_data[room_id]['name']}!"
-        })
-    except Exception as e:
-        return JSONResponse({"success": False, "error": str(e)})
-
-# Add this after your existing room endpoints (around line 200)
-
 # Game state storage (simple in-memory for now)
 games_data = {}
 player_sessions = {}
 
 @app.post("/api/rooms/{room_id}/join")
-async def join_room_endpoint(room_id: str, request: Request):
+async def join_room(room_id: str, request: Request):
     """Join a specific room"""
     try:
         data = await request.json()
@@ -354,8 +332,7 @@ async def select_card(request: Request):
         )
 
 def generate_sample_card(card_number):
-    """Generate a sample bingo card (replace with actual card generation)"""
-    import random
+    """Generate a sample bingo card"""
     card = []
     for col in range(5):
         start = col * 15 + 1
