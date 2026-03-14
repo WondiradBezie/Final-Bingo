@@ -134,7 +134,6 @@
             border-color: #1e7e34;
         }
 
-        /* Range colors for reference (only show when not called) */
         .num-cell:not(.called).b { background: #ffe5e5; }
         .num-cell:not(.called).i { background: #fff3cd; }
         .num-cell:not(.called).n { background: #d4edda; }
@@ -353,7 +352,10 @@
             color: #666;
         }
 
-        /* Hide scrollbar but keep functionality */
+        .hidden {
+            display: none !important;
+        }
+
         .cards-grid::-webkit-scrollbar {
             width: 4px;
         }
@@ -377,7 +379,7 @@
         </div>
 
         <!-- Game Screen -->
-        <div id="gameScreen" style="display: none;">
+        <div id="gameScreen" class="hidden">
             <!-- Top Stats Bar -->
             <div class="stats-row">
                 <div class="game-title">🎮 Joy Bingo</div>
@@ -431,11 +433,7 @@
                     <span class="call-letter-big" id="currentLetter">G</span>
                     <span class="call-number-big" id="currentNumber">52</span>
                 </div>
-                <div class="recent-calls" id="recentCalls">
-                    <div class="recent-ball">52</div>
-                    <div class="recent-ball">48</div>
-                    <div class="recent-ball">45</div>
-                </div>
+                <div class="recent-calls" id="recentCalls"></div>
             </div>
 
             <!-- Status -->
@@ -453,18 +451,21 @@
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room') || 'classic';
         const userId = urlParams.get('user') || tg.initDataUnsafe?.user?.id || 'test';
-        
+        const username = tg.initDataUnsafe?.user?.username || 'Player';
+
         // Game state
         let selectedCard = null;
         let takenCards = [];
         let calledNumbers = [52, 48, 45, 42, 38, 35, 31, 28, 24, 21]; // Example called numbers
-        let markedNumbers = new Set();
-        let gameActive = true;
-        let currentCard = generateSampleCard(1);
+        let markedNumbers = new Set(['FREE']); // FREE space pre-marked
+        let gameActive = false;
+        let currentCard = [];
+        let cardNumber = null;
 
         // Initialize number board (1-75)
         function initNumberBoard() {
             const board = document.getElementById('numberBoard');
+            if (!board) return;
             board.innerHTML = '';
             
             for (let i = 1; i <= 75; i++) {
@@ -491,25 +492,10 @@
             document.getElementById('calledCount').textContent = `${calledNumbers.length}/75`;
         }
 
-        // Generate sample card (replace with actual from server)
-        function generateSampleCard(cardNum) {
-            const card = [];
-            for (let col = 0; col < 5; col++) {
-                const start = col * 15 + 1;
-                const nums = [];
-                while (nums.length < 5) {
-                    const num = Math.floor(Math.random() * 15) + start;
-                    if (!nums.includes(num)) nums.push(num);
-                }
-                nums.sort((a,b) => a - b);
-                card.push(...nums);
-            }
-            return card;
-        }
-
         // Render bingo card
         function renderBingoCard() {
             const grid = document.getElementById('bingoCard');
+            if (!grid || !currentCard.length) return;
             grid.innerHTML = '';
             
             // Header
@@ -548,7 +534,10 @@
 
         // Mark a number
         function markNumber(num) {
-            if (!gameActive) return;
+            if (!gameActive) {
+                alert('Game not active yet!');
+                return;
+            }
             if (!calledNumbers.includes(num)) {
                 alert(`Number ${num} hasn't been called yet!`);
                 return;
@@ -561,6 +550,7 @@
             // Check for bingo
             if (checkBingo()) {
                 document.getElementById('status').textContent = "🎉 BINGO! Click CALL BINGO! 🎉";
+                // Here you would enable a bingo button
             }
         }
 
@@ -600,45 +590,95 @@
         // Load cards for selection
         async function loadCards() {
             try {
-                // Simulate loading
-                setTimeout(() => {
-                    const grid = document.getElementById('cardsGrid');
-                    grid.style.display = 'grid';
-                    document.getElementById('loadingCards').style.display = 'none';
+                // Fetch taken cards from server
+                const response = await fetch(`/api/game/taken_cards/${roomId}`);
+                const data = await response.json();
+                takenCards = data.taken_cards || [];
+                
+                const grid = document.getElementById('cardsGrid');
+                grid.innerHTML = '';
+                grid.style.display = 'grid';
+                document.getElementById('loadingCards').style.display = 'none';
+                
+                for (let i = 1; i <= 400; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'card-btn';
+                    btn.textContent = i;
+                    btn.dataset.cardNum = i;
                     
-                    for (let i = 1; i <= 400; i++) {
-                        const btn = document.createElement('button');
-                        btn.className = 'card-btn';
-                        btn.textContent = i;
-                        btn.onclick = () => selectCard(i);
-                        
-                        // Randomly mark some as taken for demo
-                        if (Math.random() < 0.1) {
-                            btn.classList.add('taken');
-                            btn.disabled = true;
-                        }
-                        
-                        grid.appendChild(btn);
+                    if (takenCards.includes(i.toString())) {
+                        btn.classList.add('taken');
+                        btn.disabled = true;
                     }
-                }, 1000);
+                    
+                    btn.onclick = () => selectCard(i);
+                    grid.appendChild(btn);
+                }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error loading cards:', error);
+                document.getElementById('loadingCards').textContent = 'Error loading cards. Retrying...';
+                setTimeout(loadCards, 2000);
             }
         }
 
         // Select a card
-        function selectCard(cardNum) {
-            document.getElementById('selectionScreen').style.display = 'none';
-            document.getElementById('gameScreen').style.display = 'block';
+        async function selectCard(cardNum) {
+            if (takenCards.includes(cardNum.toString())) {
+                alert('This card is already taken!');
+                return;
+            }
             
-            document.getElementById('cardNum').textContent = `#${cardNum}`;
+            selectedCard = cardNum;
             
-            // Initialize game
-            initNumberBoard();
-            renderBingoCard();
+            // Show selected state
+            document.querySelectorAll('.card-btn').forEach(btn => {
+                if (btn.dataset.cardNum == cardNum) {
+                    btn.classList.add('selected');
+                }
+            });
             
-            // Update current call
-            updateCurrentCall(52);
+            try {
+                // Call server to select card
+                const response = await fetch('/api/game/select_card', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        user_id: userId,
+                        room_id: roomId,
+                        card_number: cardNum,
+                        username: username
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Switch to game screen
+                    document.getElementById('selectionScreen').style.display = 'none';
+                    document.getElementById('gameScreen').classList.remove('hidden');
+                    
+                    // Set game state
+                    currentCard = result.game_state.card;
+                    cardNumber = cardNum;
+                    gameActive = true;
+                    
+                    // Update UI
+                    document.getElementById('cardNum').textContent = `#${cardNum}`;
+                    
+                    // Initialize game
+                    initNumberBoard();
+                    renderBingoCard();
+                    updateCurrentCall(calledNumbers[calledNumbers.length - 1] || 52);
+                    
+                    // Start game simulation
+                    startGame();
+                } else {
+                    alert(result.error || 'Failed to select card');
+                }
+            } catch (error) {
+                console.error('Error selecting card:', error);
+                alert('Failed to connect to server');
+            }
         }
 
         // Update current call display
@@ -664,8 +704,35 @@
             });
         }
 
-        // Simulate new number calls
-        function simulateCall() {
+        // Add a new called number
+        function addCalledNumber(num) {
+            if (!calledNumbers.includes(num)) {
+                calledNumbers.push(num);
+                
+                // Update number board
+                const cell = document.getElementById(`num-${num}`);
+                if (cell) cell.classList.add('called');
+                
+                document.getElementById('calledCount').textContent = `${calledNumbers.length}/75`;
+                updateCurrentCall(num);
+            }
+        }
+
+        // Start game simulation
+        function startGame() {
+            // Poll for room info
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/rooms/' + roomId);
+                    const room = await response.json();
+                    document.getElementById('players').textContent = room.players || '382';
+                    document.getElementById('derash').textContent = room.prize_pool || '3056';
+                } catch (e) {
+                    console.error('Error fetching room:', e);
+                }
+            }, 3000);
+            
+            // Simulate new number calls
             setInterval(() => {
                 if (!gameActive) return;
                 
@@ -674,21 +741,13 @@
                     newNum = Math.floor(Math.random() * 75) + 1;
                 } while (calledNumbers.includes(newNum));
                 
-                calledNumbers.push(newNum);
+                addCalledNumber(newNum);
                 
-                // Update number board
-                const cell = document.getElementById(`num-${newNum}`);
-                if (cell) cell.classList.add('called');
-                
-                document.getElementById('calledCount').textContent = `${calledNumbers.length}/75`;
-                updateCurrentCall(newNum);
-                
-            }, 3000);
+            }, 4000);
         }
 
         // Initialize
         loadCards();
-        setTimeout(simulateCall, 2000);
     </script>
 </body>
 </html>
