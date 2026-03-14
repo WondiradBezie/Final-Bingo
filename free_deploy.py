@@ -4,12 +4,15 @@ import json
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import Application, CommandHandler, ContextTypes
+import httpx
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -27,39 +30,140 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize bot application
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koyeb.app")
+
+# Create bot application
+bot_app = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize bot on startup"""
+    global bot_app
+    if BOT_TOKEN:
+        # Build bot application
+        bot_app = Application.builder().token(BOT_TOKEN).build()
+        
+        # Add handlers
+        bot_app.add_handler(CommandHandler("start", start_command))
+        bot_app.add_handler(CommandHandler("help", help_command))
+        bot_app.add_handler(CommandHandler("play", play_command))
+        
+        # Initialize bot
+        await bot_app.initialize()
+        logger.info("✅ Bot application initialized")
+    else:
+        logger.warning("⚠️ BOT_TOKEN not set, bot commands disabled")
+
+# Command handlers
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command"""
+    user = update.effective_user
+    logger.info(f"User {user.id} (@{user.username}) started the bot")
+    
+    keyboard = [
+        [InlineKeyboardButton("🎮 Play Bingo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("❓ Help", callback_data="help"),
+         InlineKeyboardButton("💰 Balance", callback_data="balance")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n"
+        f"Click the button below to start playing:",
+        reply_markup=reply_markup
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command"""
+    help_text = """
+🎮 **How to Play Bingo:**
+1. Click "Play Bingo"
+2. Select a card (cost varies by room)
+3. Numbers are called every 2 seconds
+4. Mark numbers on your card
+5. Get BINGO to win!
+
+📋 **Commands:**
+/start - Main menu
+/help - This help
+/play - Open game directly
+
+🏆 **Game Modes:**
+• Classic - Mark all numbers
+• Blackout - Fill entire card
+• Line - Complete any line
+• Four Corners - Get all corners
+
+Need help? Contact @admin
+"""
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+
+async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /play command"""
+    keyboard = [[InlineKeyboardButton("🎮 Open Game", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "Click below to enter the game lobby:",
+        reply_markup=reply_markup
+    )
+
 # Health check endpoint
 @app.get("/")
 async def root():
     return {
         "status": "online",
         "service": "Joy Bingo",
-        "mode": "free-hosting",
+        "mode": "production",
+        "bot_configured": bool(BOT_TOKEN),
         "timestamp": datetime.now().isoformat()
     }
 
-# Add this near your other @app routes (like @app.get("/"))
+# Webhook endpoint for Telegram
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
-    """Receive updates from Telegram"""
+    """Receive and process Telegram updates"""
     try:
-        # Log that we received something
+        # Get the update from Telegram
         update_data = await request.json()
-        logger.info(f"📨 Received webhook update: {update_data}")
-
-        # TODO: Add your bot logic here to process the update and reply
-        # For now, we'll just acknowledge receipt
-        # You'll need to integrate your python-telegram-bot logic here
-
-        return {"ok": True}
+        logger.info(f"📨 Received webhook update: {update_data.get('update_id', 'unknown')}")
+        
+        if not bot_app:
+            logger.error("❌ Bot application not initialized")
+            return JSONResponse(status_code=200, content={"ok": False, "error": "Bot not initialized"})
+        
+        # Create Update object and process it
+        update = Update.de_json(update_data, bot_app.bot)
+        
+        # Process the update
+        await bot_app.process_update(update)
+        
+        return {"ok": True, "message": "Update processed"}
+        
     except Exception as e:
         logger.error(f"❌ Webhook error: {e}")
         return JSONResponse(status_code=200, content={"ok": False, "error": str(e)})
+
+# GET handler for webhook (for testing)
+@app.get("/api/webhook")
+async def webhook_get():
+    """Handle GET requests for testing"""
+    return {
+        "message": "Webhook endpoint is active",
+        "method": "GET",
+        "use": "Send POST requests with Telegram updates",
+        "bot_configured": bool(BOT_TOKEN),
+        "webapp_url": WEBAPP_URL
+    }
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "bot_ready": bot_app is not None if BOT_TOKEN else False
     }
 
 @app.get("/ping")
@@ -70,17 +174,43 @@ async def ping():
 rooms_data = {
     "classic": {
         "id": "classic",
-        "name": "Classic Bingo",
+        "name": "🎲 Classic Bingo",
         "players": 0,
+        "max_players": 400,
         "status": "waiting",
-        "prize_pool": 0
+        "prize_pool": 0,
+        "card_price": 10,
+        "description": "Traditional bingo - mark all numbers to win!"
     },
     "blackout": {
         "id": "blackout",
-        "name": "Blackout",
+        "name": "⬛ Blackout",
         "players": 0,
+        "max_players": 200,
         "status": "waiting",
-        "prize_pool": 0
+        "prize_pool": 0,
+        "card_price": 20,
+        "description": "Fill your entire card to win!"
+    },
+    "four_corners": {
+        "id": "four_corners",
+        "name": "📦 Four Corners",
+        "players": 0,
+        "max_players": 350,
+        "status": "waiting",
+        "prize_pool": 0,
+        "card_price": 12,
+        "description": "Get all four corners to win!"
+    },
+    "line": {
+        "id": "line",
+        "name": "📏 Line Bingo",
+        "players": 0,
+        "max_players": 400,
+        "status": "waiting",
+        "prize_pool": 0,
+        "card_price": 10,
+        "description": "Complete any line (row, column, or diagonal) to win!"
     }
 }
 
@@ -96,34 +226,62 @@ async def get_room(room_id: str):
         return JSONResponse(rooms_data[room_id])
     return JSONResponse({"error": "Room not found"}, status_code=404)
 
-# Simple WebSocket connection manager
+@app.post("/api/rooms/{room_id}/join")
+async def join_room(room_id: str, request: Request):
+    """Join a room"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        username = data.get("username")
+        
+        if room_id not in rooms_data:
+            return JSONResponse({"success": False, "error": "Room not found"})
+        
+        # Simple room joining logic
+        rooms_data[room_id]["players"] += 1
+        
+        return JSONResponse({
+            "success": True,
+            "room": rooms_data[room_id],
+            "message": f"Welcome {username} to {rooms_data[room_id]['name']}!"
+        })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+# WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, Set[WebSocket]] = {}
+        self.user_rooms: Dict[str, str] = {}
     
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
         if room_id not in self.active_connections:
             self.active_connections[room_id] = set()
         self.active_connections[room_id].add(websocket)
+        self.user_rooms[user_id] = room_id
         logger.info(f"User {user_id} connected to room {room_id}")
         
         # Update player count
         if room_id in rooms_data:
             rooms_data[room_id]["players"] = len(self.active_connections[room_id])
     
-    def disconnect(self, websocket: WebSocket, room_id: str, user_id: str):
-        if room_id in self.active_connections:
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        room_id = self.user_rooms.get(user_id)
+        if room_id and room_id in self.active_connections:
             self.active_connections[room_id].discard(websocket)
             if room_id in rooms_data:
                 rooms_data[room_id]["players"] = len(self.active_connections[room_id])
-        logger.info(f"User {user_id} disconnected from room {room_id}")
+        if user_id in self.user_rooms:
+            del self.user_rooms[user_id]
+        logger.info(f"User {user_id} disconnected")
     
-    async def broadcast(self, room_id: str, message: dict):
+    async def broadcast(self, room_id: str, message: dict, exclude_user: str = None):
         if room_id in self.active_connections:
             disconnected = set()
             for connection in self.active_connections[room_id]:
                 try:
+                    # Find user for this connection (simplified)
                     await connection.send_json(message)
                 except:
                     disconnected.add(connection)
@@ -145,7 +303,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
         await websocket.send_json({
             "type": "connected",
             "message": f"Connected to room {room_id}",
-            "room_data": rooms_data.get(room_id, {})
+            "room_data": rooms_data.get(room_id, {}),
+            "timestamp": datetime.now().isoformat()
         })
         
         while True:
@@ -153,53 +312,71 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             data = await websocket.receive_text()
             try:
                 message = json.loads(data)
+                logger.info(f"WebSocket message from {user_id}: {message.get('type')}")
                 
-                # Echo back for now (you can add game logic later)
-                await websocket.send_json({
-                    "type": "ack",
-                    "received": message,
-                    "timestamp": datetime.now().isoformat()
-                })
+                # Handle different message types
+                if message.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
                 
-                # Broadcast to room
-                await manager.broadcast(room_id, {
-                    "type": "user_action",
-                    "user_id": user_id,
-                    "data": message
-                })
+                elif message.get("type") == "mark_number":
+                    # Handle number marking
+                    number = message.get("number")
+                    await manager.broadcast(room_id, {
+                        "type": "number_marked",
+                        "user_id": user_id,
+                        "number": number,
+                        "timestamp": datetime.now().isoformat()
+                    }, exclude_user=user_id)
+                    
+                    await websocket.send_json({
+                        "type": "mark_confirmed",
+                        "number": number,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                
+                elif message.get("type") == "call_bingo":
+                    # Handle bingo call
+                    await manager.broadcast(room_id, {
+                        "type": "bingo_called",
+                        "user_id": user_id,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    
+                    await websocket.send_json({
+                        "type": "bingo_confirmed",
+                        "message": "Bingo called! Verifying...",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                
+                else:
+                    # Echo back for now
+                    await websocket.send_json({
+                        "type": "ack",
+                        "received": message,
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
             except json.JSONDecodeError:
                 await websocket.send_json({
                     "type": "error",
-                    "message": "Invalid JSON"
+                    "message": "Invalid JSON format"
                 })
                 
     except WebSocketDisconnect:
-        manager.disconnect(websocket, room_id, user_id)
+        manager.disconnect(websocket, user_id)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket, room_id, user_id)
+        manager.disconnect(websocket, user_id)
 
-# Simple webhook endpoint for Telegram (optional)
-@app.post("/api/webhook")
-async def telegram_webhook(request: Request):
-    """Telegram bot webhook"""
-    try:
-        data = await request.json()
-        logger.info(f"Received webhook: {data}")
-        return {"ok": True}
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return {"ok": False, "error": str(e)}
-
-# Serve static files if you have a webapp directory
+# Serve static files
 try:
     app.mount("/webapp", StaticFiles(directory="webapp"), name="webapp")
-    logger.info("Mounted webapp directory")
-except:
-    logger.warning("webapp directory not found, skipping")
+    logger.info("✅ Mounted webapp directory")
+except Exception as e:
+    logger.warning(f"⚠️ webapp directory not found: {e}")
 
 # For local testing
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
