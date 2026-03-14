@@ -17,31 +17,39 @@
             background: linear-gradient(135deg, #10b981, #059669) !important;
             color: white !important;
         }
+        
+        /* Card Selection Grid - 8 columns x 50 rows */
         .card-grid {
             display: grid;
-            grid-template-columns: repeat(10, 1fr);
-            gap: 5px;
-            max-height: 400px;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 8px;
+            max-height: 500px;
             overflow-y: auto;
-            padding: 10px;
+            padding: 15px;
             background: white;
-            border-radius: 10px;
+            border-radius: 12px;
+            margin-top: 20px;
         }
+        
         .card-btn {
-            padding: 8px 4px;
-            font-size: 0.8rem;
+            padding: 12px 4px;
+            font-size: 1rem;
+            font-weight: 600;
             border: 2px solid #e5e7eb;
-            border-radius: 6px;
+            border-radius: 8px;
             background: white;
             cursor: pointer;
             transition: all 0.2s;
-            font-weight: 500;
+            text-align: center;
         }
+        
         .card-btn:hover:not(:disabled) {
             border-color: #6366f1;
             background: #f0f9ff;
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(99,102,241,0.2);
         }
+        
         .card-btn.taken {
             background: #fee2e2;
             border-color: #ef4444;
@@ -49,15 +57,157 @@
             cursor: not-allowed;
             text-decoration: line-through;
         }
+        
         .card-btn.selected {
             background: #10b981;
             border-color: #059669;
             color: white;
+            transform: scale(1.05);
         }
+        
         .loading-cards {
             text-align: center;
             padding: 40px;
             color: #6b7280;
+            font-size: 1.2rem;
+        }
+        
+        /* Bingo Grid */
+        .bingo-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            max-width: 500px;
+            margin: 20px auto;
+        }
+        
+        .grid-cell {
+            aspect-ratio: 1;
+            background: #f3f4f6;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .grid-cell:hover {
+            transform: scale(1.05);
+            background: #e5e7eb;
+        }
+        
+        .grid-cell.marked {
+            background: #10b981 !important;
+            color: white;
+            transform: scale(0.95);
+        }
+        
+        .grid-cell.header {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            cursor: default;
+            font-size: 1.8rem;
+        }
+        
+        .grid-cell.header:hover {
+            transform: none;
+        }
+        
+        /* Called Numbers */
+        .called-numbers {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .numbers-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 20px;
+            min-height: 100px;
+            background: #f9fafb;
+            border-radius: 10px;
+        }
+        
+        .number-ball {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            animation: pop 0.3s ease-out;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .number-ball.b-range { background: #ef4444; }
+        .number-ball.i-range { background: #f59e0b; }
+        .number-ball.n-range { background: #10b981; }
+        .number-ball.g-range { background: #3b82f6; }
+        .number-ball.o-range { background: #8b5cf6; }
+        
+        @keyframes pop {
+            0% { transform: scale(0); }
+            80% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .game-controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .current-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #6366f1;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
     </style>
 </head>
@@ -81,17 +231,21 @@
             </div>
         </div>
 
+        <!-- Card Selection Screen -->
         <div id="card-selection" class="card-selection">
-            <h2>Select Your Card (1-400)</h2>
+            <h2>🎴 Select Your Card (1-400)</h2>
             <div class="loading-cards" id="loading-cards">Loading available cards...</div>
             <div class="card-grid" id="card-grid" style="display: none;"></div>
         </div>
 
+        <!-- Game Board Screen -->
         <div id="game-board" class="game-board" style="display: none;">
+            <div class="current-number" id="current-call">Waiting for first number...</div>
+            
             <div class="bingo-grid" id="bingo-grid"></div>
             
             <div class="called-numbers">
-                <h3>Called Numbers</h3>
+                <h3>📢 Called Numbers</h3>
                 <div class="numbers-container" id="called-numbers"></div>
             </div>
 
@@ -115,7 +269,7 @@
         let takenCards = [];
         let gameState = {
             card: [],
-            marked: new Set(['FREE']), // FREE space always marked
+            marked: new Set(),
             calledNumbers: [],
             gameActive: false
         };
@@ -136,7 +290,7 @@
                 const room = await roomResponse.json();
                 document.getElementById('room-name').textContent = room.name;
                 
-                // Build card grid
+                // Build card grid - 8 columns x 50 rows = 400 cards
                 const grid = document.getElementById('card-grid');
                 grid.innerHTML = '';
                 
@@ -144,7 +298,7 @@
                     const cardNum = i.toString();
                     const btn = document.createElement('button');
                     btn.className = 'card-btn';
-                    btn.textContent = `#${i}`;
+                    btn.textContent = cardNum;  // Just the number, no #
                     btn.dataset.cardNum = cardNum;
                     
                     // Check if card is taken
@@ -181,7 +335,7 @@
             buttons.forEach(btn => {
                 if (btn.dataset.cardNum === cardNumber.toString()) {
                     btn.classList.add('selected');
-                    btn.textContent = '✓ Selected';
+                    btn.textContent = '✓ ' + cardNumber;
                 }
             });
             
@@ -205,7 +359,11 @@
                 
                 // Get the actual card from server response
                 gameState.card = result.game_state.card;
+                gameState.marked = new Set();
                 gameState.gameActive = true;
+                
+                // Mark the center as FREE (position 12)
+                gameState.marked.add('FREE');
                 
                 renderBoard();
                 startGame();
@@ -215,7 +373,7 @@
                 buttons.forEach(btn => {
                     if (btn.dataset.cardNum === cardNumber.toString()) {
                         btn.classList.remove('selected');
-                        btn.textContent = `#${cardNumber}`;
+                        btn.textContent = cardNumber;
                     }
                 });
             }
@@ -239,9 +397,13 @@
                 const cell = document.createElement('div');
                 cell.className = 'grid-cell';
                 
-                if (i === 12) { // Center is FREE space
-                    cell.textContent = '⭐ FREE';
-                    cell.classList.add('free-space', 'marked');
+                // Position 12 is the center (FREE space)
+                if (i === 12) {
+                    cell.textContent = '⭐';
+                    cell.classList.add('free-space');
+                    if (gameState.marked.has('FREE')) {
+                        cell.classList.add('marked');
+                    }
                 } else {
                     const number = gameState.card[i];
                     cell.textContent = number;
@@ -253,6 +415,12 @@
                     else if (number <= 60) cell.style.background = '#cfe2ff';
                     else cell.style.background = '#e2d5f3';
                     
+                    // If already marked (shouldn't happen except FREE)
+                    if (gameState.marked.has(number)) {
+                        cell.classList.add('marked');
+                    }
+                    
+                    // Player clicks to mark numbers manually
                     cell.onclick = () => markNumber(number);
                 }
                 
@@ -260,22 +428,26 @@
             }
         }
 
-        // Mark a number
+        // MANUAL MARKING - Player clicks to mark a number
         async function markNumber(number) {
             if (!gameState.gameActive) {
                 alert('Game not active!');
                 return;
             }
             
+            // Check if number has been called
             if (!gameState.calledNumbers.includes(number)) {
-                alert('❌ Number not called yet!');
+                alert(`❌ Number ${number} hasn't been called yet!`);
                 return;
             }
             
+            // Check if already marked
             if (gameState.marked.has(number)) {
+                alert(`Number ${number} is already marked!`);
                 return;
             }
             
+            // Send to server
             const response = await fetch('/api/game/mark_number', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -289,24 +461,25 @@
             const result = await response.json();
             
             if (result.success) {
+                // Mark the number locally
                 gameState.marked.add(number);
-                updateBoard();
+                updateCellMarked(number);
                 
-                if (result.bingo) {
+                // Check for bingo
+                if (checkForBingo()) {
                     document.getElementById('bingo-btn').disabled = false;
                     alert('🎯 You have BINGO! Click the BINGO button to win!');
                 }
+            } else {
+                alert(result.error || 'Failed to mark number');
             }
         }
 
-        // Update board display
-        function updateBoard() {
+        // Update a single cell when marked
+        function updateCellMarked(number) {
             const cells = document.querySelectorAll('.grid-cell:not(.header)');
-            cells.forEach((cell, index) => {
-                if (index === 12) return; // Skip FREE space
-                
-                const number = parseInt(cell.textContent);
-                if (gameState.marked.has(number)) {
+            cells.forEach(cell => {
+                if (cell.textContent === number.toString()) {
                     cell.classList.add('marked');
                 }
             });
@@ -314,15 +487,12 @@
 
         // Check for bingo
         function checkForBingo() {
-            // Check all numbers marked (FREE is already marked)
+            // Check all numbers marked (including FREE)
             const allMarked = gameState.card.every(num => 
                 gameState.marked.has(num)
             );
             
-            if (allMarked) {
-                document.getElementById('bingo-btn').disabled = false;
-                return true;
-            }
+            if (allMarked) return true;
             
             // Check rows
             for (let row = 0; row < 5; row++) {
@@ -335,10 +505,7 @@
                         break;
                     }
                 }
-                if (rowComplete) {
-                    document.getElementById('bingo-btn').disabled = false;
-                    return true;
-                }
+                if (rowComplete) return true;
             }
             
             // Check columns
@@ -352,10 +519,7 @@
                         break;
                     }
                 }
-                if (colComplete) {
-                    document.getElementById('bingo-btn').disabled = false;
-                    return true;
-                }
+                if (colComplete) return true;
             }
             
             return false;
@@ -387,7 +551,7 @@
             }
         }
 
-        // Start game
+        // Start game - simulate number calls (in production, this would be WebSocket)
         function startGame() {
             // Poll for room info
             setInterval(async () => {
@@ -401,11 +565,12 @@
                 }
             }, 2000);
             
-            // Simulate number calls (in production, this would come from WebSocket)
+            // Simulate number calls every 3 seconds
             setInterval(() => {
                 if (!gameState.gameActive) return;
                 
                 if (gameState.calledNumbers.length < 75) {
+                    // Generate a random number that hasn't been called
                     let num;
                     do {
                         num = Math.floor(Math.random() * 75) + 1;
@@ -414,15 +579,29 @@
                     gameState.calledNumbers.push(num);
                     updateCalledNumbers();
                     
-                    // Auto-mark if number is on player's card
-                    if (gameState.card.includes(num)) {
-                        setTimeout(() => {
-                            markNumber(num);
-                        }, 500);
-                    }
+                    // Update current call display
+                    document.getElementById('current-call').innerHTML = `🎲 Current Number: <span style="color:#ef4444">${num}</span>`;
                     
-                    // Check for bingo
-                    checkForBingo();
+                    // Flash animation for new number
+                    const currentCall = document.getElementById('current-call');
+                    currentCall.style.animation = 'none';
+                    currentCall.offsetHeight;
+                    currentCall.style.animation = 'pop 0.3s ease-out';
+                    
+                    // Check if this number is on player's card
+                    if (gameState.card.includes(num)) {
+                        // Highlight the number but DON'T mark it automatically
+                        // Player will click to mark manually
+                        const cells = document.querySelectorAll('.grid-cell:not(.header)');
+                        cells.forEach(cell => {
+                            if (cell.textContent === num.toString()) {
+                                cell.style.animation = 'pulse 0.5s ease-out';
+                                setTimeout(() => {
+                                    cell.style.animation = '';
+                                }, 500);
+                            }
+                        });
+                    }
                 }
             }, 3000);
         }
@@ -446,6 +625,17 @@
                 container.appendChild(ball);
             });
         }
+
+        // Add pulse animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); box-shadow: 0 0 20px #6366f1; }
+                100% { transform: scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
 
         // Initialize
         loadCards();
