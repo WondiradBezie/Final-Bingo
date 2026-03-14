@@ -24,10 +24,40 @@
             max-height: 400px;
             overflow-y: auto;
             padding: 10px;
+            background: white;
+            border-radius: 10px;
         }
         .card-btn {
-            padding: 5px;
+            padding: 8px 4px;
             font-size: 0.8rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .card-btn:hover:not(:disabled) {
+            border-color: #6366f1;
+            background: #f0f9ff;
+            transform: translateY(-2px);
+        }
+        .card-btn.taken {
+            background: #fee2e2;
+            border-color: #ef4444;
+            opacity: 0.6;
+            cursor: not-allowed;
+            text-decoration: line-through;
+        }
+        .card-btn.selected {
+            background: #10b981;
+            border-color: #059669;
+            color: white;
+        }
+        .loading-cards {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
         }
     </style>
 </head>
@@ -53,15 +83,12 @@
 
         <div id="card-selection" class="card-selection">
             <h2>Select Your Card (1-400)</h2>
-            <div class="card-grid" id="card-grid">
-                <!-- 400 cards will be loaded here -->
-            </div>
+            <div class="loading-cards" id="loading-cards">Loading available cards...</div>
+            <div class="card-grid" id="card-grid" style="display: none;"></div>
         </div>
 
         <div id="game-board" class="game-board" style="display: none;">
-            <div class="bingo-grid" id="bingo-grid">
-                <!-- Bingo grid will be loaded here -->
-            </div>
+            <div class="bingo-grid" id="bingo-grid"></div>
             
             <div class="called-numbers">
                 <h3>Called Numbers</h3>
@@ -85,73 +112,78 @@
         const username = tg.initDataUnsafe?.user?.username || 'Player';
 
         let selectedCard = null;
+        let takenCards = [];
         let gameState = {
             card: [],
-            marked: new Set(),
+            marked: new Set(['FREE']), // FREE space always marked
             calledNumbers: [],
             gameActive: false
         };
 
-        // Generate 400 cards (1-400)
-        function loadCards() {
-            const grid = document.getElementById('card-grid');
-            grid.innerHTML = '';
+        // Load available cards and taken status
+        async function loadCards() {
+            document.getElementById('loading-cards').style.display = 'block';
+            document.getElementById('card-grid').style.display = 'none';
             
-            for (let i = 1; i <= 400; i++) {
-                const btn = document.createElement('button');
-                btn.className = 'card-btn';
-                btn.textContent = `#${i}`;
-                btn.onclick = () => selectCard(i);
+            try {
+                // Fetch taken cards from server
+                const response = await fetch(`/api/game/taken_cards/${roomId}`);
+                const data = await response.json();
+                takenCards = data.taken_cards || [];
                 
-                // Randomly mark some cards as taken for demo (remove in production)
-                if (Math.random() < 0.1) {
-                    btn.disabled = true;
-                    btn.classList.add('taken');
-                }
+                // Display room info
+                const roomResponse = await fetch('/api/rooms/' + roomId);
+                const room = await roomResponse.json();
+                document.getElementById('room-name').textContent = room.name;
                 
-                grid.appendChild(btn);
-            }
-        }
-
-        // Generate a valid bingo card with proper column ranges
-        function generateValidCard(cardNumber) {
-            const card = new Array(25).fill(0);
-            
-            // Use card number as seed for consistent generation
-            const seed = cardNumber * 1000;
-            
-            // Generate numbers for each column with proper ranges
-            for (let col = 0; col < 5; col++) {
-                // Calculate range for this column
-                const min = col * 15 + 1;
-                const max = min + 14;
+                // Build card grid
+                const grid = document.getElementById('card-grid');
+                grid.innerHTML = '';
                 
-                // Generate 5 unique numbers for this column
-                const colNumbers = [];
-                while (colNumbers.length < 5) {
-                    const num = Math.floor(Math.random() * 15) + min;
-                    if (!colNumbers.includes(num)) {
-                        colNumbers.push(num);
+                for (let i = 1; i <= 400; i++) {
+                    const cardNum = i.toString();
+                    const btn = document.createElement('button');
+                    btn.className = 'card-btn';
+                    btn.textContent = `#${i}`;
+                    btn.dataset.cardNum = cardNum;
+                    
+                    // Check if card is taken
+                    if (takenCards.includes(cardNum)) {
+                        btn.disabled = true;
+                        btn.classList.add('taken');
+                        btn.title = 'Card already taken';
                     }
+                    
+                    btn.onclick = () => selectCard(i);
+                    grid.appendChild(btn);
                 }
                 
-                // Sort and place in column
-                colNumbers.sort((a, b) => a - b);
-                for (let row = 0; row < 5; row++) {
-                    const index = row * 5 + col;
-                    card[index] = colNumbers[row];
-                }
+                document.getElementById('loading-cards').style.display = 'none';
+                document.getElementById('card-grid').style.display = 'grid';
+                
+            } catch (error) {
+                console.error('Error loading cards:', error);
+                document.getElementById('loading-cards').innerHTML = 'Error loading cards. <button onclick="loadCards()">Retry</button>';
             }
-            
-            // Set free space in middle (N column, 3rd row - index 12)
-            card[12] = 'FREE';
-            
-            return card;
         }
 
         // Select a card
         async function selectCard(cardNumber) {
+            if (takenCards.includes(cardNumber.toString())) {
+                alert('This card is already taken!');
+                return;
+            }
+            
             selectedCard = cardNumber;
+            
+            // Show loading state
+            const buttons = document.querySelectorAll('.card-btn');
+            buttons.forEach(btn => {
+                if (btn.dataset.cardNum === cardNumber.toString()) {
+                    btn.classList.add('selected');
+                    btn.textContent = '✓ Selected';
+                }
+            });
             
             const response = await fetch('/api/game/select_card', {
                 method: 'POST',
@@ -159,7 +191,8 @@
                 body: JSON.stringify({
                     user_id: userId,
                     room_id: roomId,
-                    card_number: cardNumber
+                    card_number: cardNumber,
+                    username: username
                 })
             });
             
@@ -170,18 +203,21 @@
                 document.getElementById('card-selection').style.display = 'none';
                 document.getElementById('game-board').style.display = 'block';
                 
-                // Generate valid card
-                gameState.card = generateValidCard(cardNumber);
-                gameState.marked = new Set();
+                // Get the actual card from server response
+                gameState.card = result.game_state.card;
                 gameState.gameActive = true;
-                
-                // Mark free space as already marked
-                gameState.marked.add('FREE');
                 
                 renderBoard();
                 startGame();
             } else {
                 alert(result.error || 'Failed to select card');
+                // Reset button
+                buttons.forEach(btn => {
+                    if (btn.dataset.cardNum === cardNumber.toString()) {
+                        btn.classList.remove('selected');
+                        btn.textContent = `#${cardNumber}`;
+                    }
+                });
             }
         }
 
@@ -203,18 +239,21 @@
                 const cell = document.createElement('div');
                 cell.className = 'grid-cell';
                 
-                if (gameState.card[i] === 'FREE') {
+                if (i === 12) { // Center is FREE space
                     cell.textContent = '⭐ FREE';
-                    cell.classList.add('free-space');
-                    if (gameState.marked.has('FREE')) {
-                        cell.classList.add('marked');
-                    }
+                    cell.classList.add('free-space', 'marked');
                 } else {
-                    cell.textContent = gameState.card[i];
-                    if (gameState.marked.has(gameState.card[i])) {
-                        cell.classList.add('marked');
-                    }
-                    cell.onclick = () => markNumber(gameState.card[i]);
+                    const number = gameState.card[i];
+                    cell.textContent = number;
+                    
+                    // Color by range
+                    if (number <= 15) cell.style.background = '#fee2e2';
+                    else if (number <= 30) cell.style.background = '#fff3cd';
+                    else if (number <= 45) cell.style.background = '#d1e7dd';
+                    else if (number <= 60) cell.style.background = '#cfe2ff';
+                    else cell.style.background = '#e2d5f3';
+                    
+                    cell.onclick = () => markNumber(number);
                 }
                 
                 grid.appendChild(cell);
@@ -264,12 +303,10 @@
         function updateBoard() {
             const cells = document.querySelectorAll('.grid-cell:not(.header)');
             cells.forEach((cell, index) => {
-                const value = gameState.card[index];
-                if (value === 'FREE') {
-                    if (gameState.marked.has('FREE')) {
-                        cell.classList.add('marked');
-                    }
-                } else if (gameState.marked.has(value)) {
+                if (index === 12) return; // Skip FREE space
+                
+                const number = parseInt(cell.textContent);
+                if (gameState.marked.has(number)) {
                     cell.classList.add('marked');
                 }
             });
@@ -277,9 +314,9 @@
 
         // Check for bingo
         function checkForBingo() {
-            // Check all numbers marked (including FREE)
+            // Check all numbers marked (FREE is already marked)
             const allMarked = gameState.card.every(num => 
-                num === 'FREE' || gameState.marked.has(num)
+                gameState.marked.has(num)
             );
             
             if (allMarked) {
@@ -293,7 +330,7 @@
                 for (let col = 0; col < 5; col++) {
                     const index = row * 5 + col;
                     const num = gameState.card[index];
-                    if (num !== 'FREE' && !gameState.marked.has(num)) {
+                    if (!gameState.marked.has(num)) {
                         rowComplete = false;
                         break;
                     }
@@ -310,7 +347,7 @@
                 for (let row = 0; row < 5; row++) {
                     const index = row * 5 + col;
                     const num = gameState.card[index];
-                    if (num !== 'FREE' && !gameState.marked.has(num)) {
+                    if (!gameState.marked.has(num)) {
                         colComplete = false;
                         break;
                     }
@@ -353,7 +390,7 @@
         // Start game
         function startGame() {
             // Poll for room info
-            const interval = setInterval(async () => {
+            setInterval(async () => {
                 try {
                     const response = await fetch('/api/rooms/' + roomId);
                     const room = await response.json();
@@ -365,7 +402,7 @@
             }, 2000);
             
             // Simulate number calls (in production, this would come from WebSocket)
-            const callInterval = setInterval(() => {
+            setInterval(() => {
                 if (!gameState.gameActive) return;
                 
                 if (gameState.calledNumbers.length < 75) {
@@ -384,10 +421,8 @@
                         }, 500);
                     }
                     
-                    // Check for bingo after each call
-                    if (checkForBingo()) {
-                        // Bingo achieved!
-                    }
+                    // Check for bingo
+                    checkForBingo();
                 }
             }, 3000);
         }
@@ -401,7 +436,6 @@
                 const ball = document.createElement('div');
                 ball.className = 'number-ball';
                 
-                // Color by range
                 if (num <= 15) ball.classList.add('b-range');
                 else if (num <= 30) ball.classList.add('i-range');
                 else if (num <= 45) ball.classList.add('n-range');
