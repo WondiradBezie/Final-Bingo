@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joy Bingo - Game</title>
+    <link rel="stylesheet" href="/webapp/css/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="game-header">
+            <h1>🎮 Bingo Game</h1>
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">Room</div>
+                    <div class="info-value" id="room-name">Classic</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Players</div>
+                    <div class="info-value" id="player-count">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Prize Pool</div>
+                    <div class="info-value prize-pool" id="prize-pool">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="card-selection" class="card-selection">
+            <h2>Select Your Card</h2>
+            <div class="card-grid" id="card-grid">
+                <!-- Cards will be loaded here -->
+            </div>
+        </div>
+
+        <div id="game-board" class="game-board" style="display: none;">
+            <div class="bingo-grid" id="bingo-grid">
+                <!-- Bingo grid will be loaded here -->
+            </div>
+            
+            <div class="called-numbers">
+                <h3>Called Numbers</h3>
+                <div class="numbers-container" id="called-numbers"></div>
+            </div>
+
+            <div class="game-controls">
+                <button class="btn btn-primary" id="bingo-btn" onclick="callBingo()" disabled>🎯 Call BINGO!</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room') || 'classic';
+        const userId = urlParams.get('user') || tg.initDataUnsafe?.user?.id || 'test_user';
+        const username = tg.initDataUnsafe?.user?.username || 'Player';
+
+        let selectedCard = null;
+        let gameState = {
+            card: [],
+            marked: new Set(),
+            calledNumbers: []
+        };
+
+        // Load available cards
+        async function loadCards() {
+            const response = await fetch('/api/rooms/' + roomId);
+            const room = await response.json();
+            document.getElementById('room-name').textContent = room.name;
+            
+            // Generate 12 sample cards
+            const grid = document.getElementById('card-grid');
+            grid.innerHTML = '';
+            
+            for (let i = 1; i <= 12; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'card-btn';
+                btn.textContent = `Card #${i}`;
+                btn.onclick = () => selectCard(i);
+                grid.appendChild(btn);
+            }
+        }
+
+        // Select a card
+        async function selectCard(cardNumber) {
+            const response = await fetch('/api/game/select_card', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_id: userId,
+                    room_id: roomId,
+                    card_number: cardNumber
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                document.getElementById('card-selection').style.display = 'none';
+                document.getElementById('game-board').style.display = 'block';
+                
+                gameState.card = result.game_state.card;
+                renderBoard();
+                startGame();
+            } else {
+                alert(result.error || 'Failed to select card');
+            }
+        }
+
+        // Render bingo board
+        function renderBoard() {
+            const grid = document.getElementById('bingo-grid');
+            grid.innerHTML = '';
+            
+            // Add BINGO header
+            ['B', 'I', 'N', 'G', 'O'].forEach(letter => {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell header';
+                cell.textContent = letter;
+                grid.appendChild(cell);
+            });
+            
+            // Add numbers
+            for (let i = 0; i < 25; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                cell.textContent = gameState.card[i];
+                cell.onclick = () => markNumber(gameState.card[i]);
+                grid.appendChild(cell);
+            }
+        }
+
+        // Mark a number
+        async function markNumber(number) {
+            if (!gameState.calledNumbers.includes(number)) {
+                alert('Number not called yet!');
+                return;
+            }
+            
+            const response = await fetch('/api/game/mark_number', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_id: userId,
+                    room_id: roomId,
+                    number: number
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                gameState.marked.add(number);
+                updateBoard();
+                
+                if (result.bingo) {
+                    document.getElementById('bingo-btn').disabled = false;
+                }
+            }
+        }
+
+        // Update board display
+        function updateBoard() {
+            const cells = document.querySelectorAll('.grid-cell:not(.header)');
+            cells.forEach((cell, index) => {
+                if (gameState.marked.has(gameState.card[index])) {
+                    cell.classList.add('marked');
+                }
+            });
+        }
+
+        // Call bingo
+        async function callBingo() {
+            const response = await fetch('/api/game/call_bingo', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_id: userId,
+                    room_id: roomId
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(`🎉 ${result.message} Prize: ${result.prize} Birr!`);
+                tg.close();
+            } else {
+                alert(result.message);
+            }
+        }
+
+        // Start game (simulate number calls)
+        function startGame() {
+            // Poll for game state
+            setInterval(async () => {
+                const response = await fetch('/api/rooms/' + roomId);
+                const room = await response.json();
+                document.getElementById('player-count').textContent = room.players;
+                document.getElementById('prize-pool').textContent = room.prize_pool;
+            }, 2000);
+            
+            // Simulate called numbers
+            setInterval(() => {
+                if (gameState.calledNumbers.length < 75) {
+                    const num = Math.floor(Math.random() * 75) + 1;
+                    if (!gameState.calledNumbers.includes(num)) {
+                        gameState.calledNumbers.push(num);
+                        updateCalledNumbers();
+                    }
+                }
+            }, 3000);
+        }
+
+        // Update called numbers display
+        function updateCalledNumbers() {
+            const container = document.getElementById('called-numbers');
+            container.innerHTML = '';
+            
+            gameState.calledNumbers.slice(-10).forEach(num => {
+                const ball = document.createElement('div');
+                ball.className = 'number-ball';
+                
+                if (num <= 15) ball.classList.add('b-range');
+                else if (num <= 30) ball.classList.add('i-range');
+                else if (num <= 45) ball.classList.add('n-range');
+                else if (num <= 60) ball.classList.add('g-range');
+                else ball.classList.add('o-range');
+                
+                ball.textContent = num;
+                container.appendChild(ball);
+            });
+        }
+
+        // Initialize
+        loadCards();
+    </script>
+</body>
+</html>
