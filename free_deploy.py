@@ -1,4 +1,3 @@
-
 # free_deploy.py
 import os
 import json
@@ -417,6 +416,32 @@ async def call_bingo(request: Request):
             content={"success": False, "error": str(e)}
         )
 
+# ============= NEW ENDPOINTS ADDED HERE =============
+
+@app.get("/api/leaderboard")
+async def get_leaderboard():
+    """Get top players leaderboard"""
+    # Simple placeholder leaderboard
+    leaderboard = [
+        {"username": "Player1", "wins": 10, "winnings": 5000},
+        {"username": "Player2", "wins": 8, "winnings": 4000},
+        {"username": "Player3", "wins": 6, "winnings": 3000},
+        {"username": "Player4", "wins": 5, "winnings": 2500},
+        {"username": "Player5", "wins": 4, "winnings": 2000},
+    ]
+    return JSONResponse(leaderboard)
+
+@app.get("/bingo_game.html")
+async def bingo_game_redirect(request: Request):
+    """Serve the bingo game page"""
+    try:
+        with open("webapp/bingo_game.html", "r") as f:
+            content = f.read()
+        return HTMLResponse(content=content, status_code=200)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Bingo Game Page Not Found</h1><p>Please ensure bingo_game.html exists in the webapp folder.</p>", status_code=404)
+
+# ============= END OF NEW ENDPOINTS =============
 
 # WebSocket connection manager
 class ConnectionManager:
