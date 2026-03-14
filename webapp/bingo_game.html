@@ -109,13 +109,34 @@
 
         .number-grid {
             display: grid;
-            grid-template-columns: repeat(15, 1fr);
-            gap: 5px;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
             background: white;
             padding: 15px;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
+
+        .number-column {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .column-header {
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 5px;
+            border-radius: 6px;
+            margin-bottom: 5px;
+        }
+
+        .column-header.b { background: #fee2e2; color: #b91c1c; }
+        .column-header.i { background: #fff3cd; color: #856404; }
+        .column-header.n { background: #d1e7dd; color: #0f5132; }
+        .column-header.g { background: #cfe2ff; color: #084298; }
+        .column-header.o { background: #e2d5f3; color: #562ab0; }
 
         .number-cell {
             aspect-ratio: 1;
@@ -129,6 +150,7 @@
             cursor: default;
             transition: all 0.2s;
             color: #1e293b;
+            border: 1px solid #e2e8f0;
         }
 
         .number-cell.called {
@@ -136,6 +158,7 @@
             color: white;
             transform: scale(1.05);
             box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+            border-color: #059669;
         }
 
         .number-cell.b-range { background: #fee2e2; }
@@ -143,12 +166,6 @@
         .number-cell.n-range { background: #d1e7dd; }
         .number-cell.g-range { background: #cfe2ff; }
         .number-cell.o-range { background: #e2d5f3; }
-
-        .number-cell.b-range.called { background: #dc2626; }
-        .number-cell.i-range.called { background: #d97706; }
-        .number-cell.n-range.called { background: #059669; }
-        .number-cell.g-range.called { background: #2563eb; }
-        .number-cell.o-range.called { background: #7c3aed; }
 
         /* Right Side - Player Card */
         .player-card {
@@ -191,45 +208,54 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
-        .grid-cell {
+        .player-column {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .player-cell {
             aspect-ratio: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: bold;
             background: #f1f5f9;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
             color: #1e293b;
+            border: 1px solid #e2e8f0;
         }
 
-        .grid-cell.header {
+        .player-cell.header {
             background: linear-gradient(135deg, #6366f1, #8b5cf6);
             color: white;
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             cursor: default;
+            border: none;
         }
 
-        .grid-cell.marked {
+        .player-cell.marked {
             background: #10b981 !important;
             color: white;
             transform: scale(0.95);
+            border-color: #059669;
         }
 
-        .grid-cell:not(.header):hover {
+        .player-cell:not(.header):hover {
             transform: scale(1.05);
             background: #e2e8f0;
         }
 
-        .grid-cell.free-space {
+        .player-cell.free-space {
             background: linear-gradient(135deg, #ffd700, #ffa500);
             color: #000;
             font-weight: bold;
         }
 
-        .grid-cell.free-space.marked {
+        .player-cell.free-space.marked {
             background: linear-gradient(135deg, #10b981, #059669) !important;
             color: white;
         }
@@ -415,11 +441,11 @@
                 <div class="game-title">🎮 Joy Bingo</div>
                 <div class="stat-item">
                     <div class="stat-label">Derash</div>
-                    <div class="stat-value" id="derash">616</div>
+                    <div class="stat-value" id="derash">0</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Players</div>
-                    <div class="stat-value" id="player-count">77</div>
+                    <div class="stat-value" id="player-count">0</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Bet</div>
@@ -437,25 +463,25 @@
 
             <!-- Main Game Area -->
             <div class="game-area">
-                <!-- Left Side - Number Board -->
+                <!-- Left Side - Number Board (Column-wise) -->
                 <div class="number-board">
                     <div class="board-header">
                         <span class="board-title">📋 Called Numbers</span>
                         <span class="called-count" id="called-count">0/75</span>
                     </div>
                     <div class="number-grid" id="number-board">
-                        <!-- Generated by JavaScript -->
+                        <!-- Generated by JavaScript - 5 columns -->
                     </div>
                 </div>
 
-                <!-- Right Side - Player Card -->
+                <!-- Right Side - Player Card (Column-wise) -->
                 <div class="player-card">
                     <div class="card-header">
                         <span class="card-title">🎴 Your Card</span>
                         <span class="card-number" id="selected-card-num">#0</span>
                     </div>
                     <div class="bingo-grid" id="bingo-grid">
-                        <!-- Generated by JavaScript -->
+                        <!-- Generated by JavaScript - 5 columns -->
                     </div>
                 </div>
             </div>
@@ -507,25 +533,50 @@
             cardNumber: null
         };
 
-        // Initialize number board (1-75)
+        // Initialize number board (1-75) in column-wise format
         function initNumberBoard() {
             const board = document.getElementById('number-board');
             board.innerHTML = '';
             
-            for (let i = 1; i <= 75; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'number-cell';
-                cell.id = `num-${i}`;
-                cell.textContent = i;
+            // Column headers
+            const columns = ['B', 'I', 'N', 'G', 'O'];
+            const columnRanges = [
+                {min: 1, max: 15},
+                {min: 16, max: 30},
+                {min: 31, max: 45},
+                {min: 46, max: 60},
+                {min: 61, max: 75}
+            ];
+            
+            // Create 5 columns
+            for (let col = 0; col < 5; col++) {
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'number-column';
                 
-                // Add range class for coloring
-                if (i <= 15) cell.classList.add('b-range');
-                else if (i <= 30) cell.classList.add('i-range');
-                else if (i <= 45) cell.classList.add('n-range');
-                else if (i <= 60) cell.classList.add('g-range');
-                else cell.classList.add('o-range');
+                // Add column header
+                const header = document.createElement('div');
+                header.className = `column-header ${columns[col].toLowerCase()}`;
+                header.textContent = columns[col];
+                columnDiv.appendChild(header);
                 
-                board.appendChild(cell);
+                // Add numbers in this column (1-15 for B, 16-30 for I, etc.)
+                for (let num = columnRanges[col].min; num <= columnRanges[col].max; num++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'number-cell';
+                    cell.id = `num-${num}`;
+                    cell.textContent = num;
+                    
+                    // Add range class for coloring
+                    if (num <= 15) cell.classList.add('b-range');
+                    else if (num <= 30) cell.classList.add('i-range');
+                    else if (num <= 45) cell.classList.add('n-range');
+                    else if (num <= 60) cell.classList.add('g-range');
+                    else cell.classList.add('o-range');
+                    
+                    columnDiv.appendChild(cell);
+                }
+                
+                board.appendChild(columnDiv);
             }
         }
 
@@ -622,44 +673,54 @@
             }
         }
 
-        // Render player's bingo card
+        // Render player's bingo card in column-wise format
         function renderBingoCard() {
             const grid = document.getElementById('bingo-grid');
             grid.innerHTML = '';
             
-            // Add BINGO header
-            ['B', 'I', 'N', 'G', 'O'].forEach(letter => {
-                const cell = document.createElement('div');
-                cell.className = 'grid-cell header';
-                cell.textContent = letter;
-                grid.appendChild(cell);
-            });
+            // Column headers
+            const columns = ['B', 'I', 'N', 'G', 'O'];
             
-            // Add numbers
-            for (let i = 0; i < 25; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'grid-cell';
+            // Create 5 columns
+            for (let col = 0; col < 5; col++) {
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'player-column';
                 
-                if (i === 12) { // Center FREE space
-                    cell.textContent = '⭐';
-                    cell.classList.add('free-space');
-                    if (gameState.marked.has('FREE')) {
-                        cell.classList.add('marked');
-                    }
-                } else {
-                    const number = gameState.card[i];
-                    cell.textContent = number;
+                // Add column header
+                const header = document.createElement('div');
+                header.className = 'player-cell header';
+                header.textContent = columns[col];
+                columnDiv.appendChild(header);
+                
+                // Add numbers in this column (5 rows)
+                for (let row = 0; row < 5; row++) {
+                    const index = row * 5 + col; // Column-major order
+                    const cell = document.createElement('div');
+                    cell.className = 'player-cell';
                     
-                    // Add click handler for manual marking
-                    cell.onclick = () => markNumber(number);
-                    
-                    // Check if already marked
-                    if (gameState.marked.has(number)) {
-                        cell.classList.add('marked');
+                    if (index === 12) { // Center FREE space
+                        cell.textContent = '⭐';
+                        cell.classList.add('free-space');
+                        if (gameState.marked.has('FREE')) {
+                            cell.classList.add('marked');
+                        }
+                    } else {
+                        const number = gameState.card[index];
+                        cell.textContent = number;
+                        
+                        // Add click handler for manual marking
+                        cell.onclick = () => markNumber(number);
+                        
+                        // Check if already marked
+                        if (gameState.marked.has(number)) {
+                            cell.classList.add('marked');
+                        }
                     }
+                    
+                    columnDiv.appendChild(cell);
                 }
                 
-                grid.appendChild(cell);
+                grid.appendChild(columnDiv);
             }
         }
 
@@ -704,22 +765,25 @@
 
         // Update a single marked cell
         function updateMarkedCell(number) {
-            const cells = document.querySelectorAll('#bingo-grid .grid-cell:not(.header)');
-            cells.forEach(cell => {
-                if (cell.textContent === number.toString()) {
-                    cell.classList.add('marked');
-                }
+            const columns = document.querySelectorAll('#bingo-grid .player-column');
+            columns.forEach(column => {
+                const cells = column.querySelectorAll('.player-cell:not(.header)');
+                cells.forEach(cell => {
+                    if (cell.textContent === number.toString() || (number === 'FREE' && cell.textContent === '⭐')) {
+                        cell.classList.add('marked');
+                    }
+                });
             });
         }
 
         // Check for bingo
         function checkForBingo() {
-            // Check rows
+            // Check rows (across columns)
             for (let row = 0; row < 5; row++) {
                 let rowComplete = true;
                 for (let col = 0; col < 5; col++) {
                     const index = row * 5 + col;
-                    const num = gameState.card[index];
+                    const num = index === 12 ? 'FREE' : gameState.card[index];
                     if (!gameState.marked.has(num)) {
                         rowComplete = false;
                         break;
@@ -733,7 +797,7 @@
                 let colComplete = true;
                 for (let row = 0; row < 5; row++) {
                     const index = row * 5 + col;
-                    const num = gameState.card[index];
+                    const num = index === 12 ? 'FREE' : gameState.card[index];
                     if (!gameState.marked.has(num)) {
                         colComplete = false;
                         break;
@@ -811,9 +875,16 @@
                 try {
                     const response = await fetch('/api/rooms/' + roomId);
                     const room = await response.json();
-                    document.getElementById('player-count').textContent = room.players;
-                    document.getElementById('derash').textContent = room.prize_pool || '616';
-                } catch (e) {}
+                    const players = room.players || 77;
+                    document.getElementById('player-count').textContent = players;
+                    // Derash = players × 10
+                    document.getElementById('derash').textContent = players * 10;
+                } catch (e) {
+                    // Fallback to demo values
+                    const players = 77;
+                    document.getElementById('player-count').textContent = players;
+                    document.getElementById('derash').textContent = players * 10;
+                }
             }, 2000);
             
             // Simulate number calls
@@ -835,12 +906,15 @@
                     
                     // Highlight if on player's card
                     if (gameState.card.includes(num)) {
-                        const cells = document.querySelectorAll('#bingo-grid .grid-cell:not(.header)');
-                        cells.forEach(cell => {
-                            if (cell.textContent === num.toString()) {
-                                cell.classList.add('pulse');
-                                setTimeout(() => cell.classList.remove('pulse'), 500);
-                            }
+                        const columns = document.querySelectorAll('#bingo-grid .player-column');
+                        columns.forEach(column => {
+                            const cells = column.querySelectorAll('.player-cell:not(.header)');
+                            cells.forEach(cell => {
+                                if (cell.textContent === num.toString()) {
+                                    cell.classList.add('pulse');
+                                    setTimeout(() => cell.classList.remove('pulse'), 500);
+                                }
+                            });
                         });
                     }
                 }
