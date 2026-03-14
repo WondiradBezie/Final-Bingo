@@ -38,6 +38,27 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koy
 # Create bot application
 bot_app = None
 
+# Load cards from cards.json
+CARDS_DATA = {}
+try:
+    with open("cards.json", "r") as f:
+        CARDS_DATA = json.load(f)
+    logger.info(f"✅ Loaded {len(CARDS_DATA)} cards from cards.json")
+except Exception as e:
+    logger.error(f"❌ Failed to load cards.json: {e}")
+    # Generate fallback cards if file missing
+    def generate_sample_card(card_number):
+        card = []
+        for col in range(5):
+            start = col * 15 + 1
+            numbers = random.sample(range(start, start + 15), 5)
+            card.extend(numbers)
+        return card
+    
+    for i in range(1, 401):
+        CARDS_DATA[str(i)] = generate_sample_card(i)
+    logger.info(f"✅ Generated {len(CARDS_DATA)} fallback cards")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize bot on startup"""
@@ -288,14 +309,15 @@ async def get_game_state(user_id: str):
         "state": {"in_game": False}
     })
 
+# ============= MODIFIED: Select card endpoint with cards.json =============
 @app.post("/api/game/select_card")
 async def select_card(request: Request):
-    """Select a bingo card"""
+    """Select a bingo card from pre-generated cards"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
         room_id = data.get("room_id")
-        card_number = data.get("card_number")
+        card_number = str(data.get("card_number"))  # Convert to string for JSON key
         
         # Simple validation
         if not all([user_id, room_id, card_number]):
@@ -304,21 +326,48 @@ async def select_card(request: Request):
                 content={"success": False, "error": "Missing required fields"}
             )
         
+        # Check if card exists
+        if card_number not in CARDS_DATA:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": f"Card #{card_number} not found"}
+            )
+        
+        # Check if card is already taken
+        for key, game in games_data.items():
+            if game.get("room_id") == room_id and game.get("card_number") == card_number:
+                return JSONResponse(
+                    status_code=400,
+                    content={"success": False, "error": f"Card #{card_number} already taken"}
+                )
+        
         # Store card selection
         game_key = f"game:{room_id}:{user_id}"
         games_data[game_key] = {
             "user_id": user_id,
             "room_id": room_id,
             "card_number": card_number,
+            "card_data": CARDS_DATA[card_number],  # Store the actual card
             "marked_numbers": [],
             "selected_at": datetime.now().isoformat()
         }
+        
+        # Update player session with card info
+        if user_id in player_sessions:
+            player_sessions[user_id]["card_number"] = card_number
+        else:
+            player_sessions[user_id] = {
+                "room_id": room_id,
+                "card_number": card_number,
+                "joined_at": datetime.now().isoformat(),
+                "username": data.get("username", "Player")
+            }
         
         return JSONResponse({
             "success": True,
             "message": f"Card #{card_number} selected!",
             "game_state": {
-                "card": generate_sample_card(card_number),
+                "card": CARDS_DATA[card_number],
                 "marked": []
             }
         })
@@ -330,14 +379,26 @@ async def select_card(request: Request):
             content={"success": False, "error": str(e)}
         )
 
-def generate_sample_card(card_number):
-    """Generate a sample bingo card"""
-    card = []
-    for col in range(5):
-        start = col * 15 + 1
-        numbers = random.sample(range(start, start + 15), 5)
-        card.extend(numbers)
-    return card
+# ============= NEW: Get taken cards endpoint =============
+@app.get("/api/game/taken_cards/{room_id}")
+async def get_taken_cards(room_id: str):
+    """Get list of taken card numbers in a room"""
+    try:
+        taken_cards = []
+        for key, game in games_data.items():
+            if game.get("room_id") == room_id and game.get("card_number"):
+                taken_cards.append(game["card_number"])
+        
+        return JSONResponse({
+            "success": True,
+            "taken_cards": taken_cards
+        })
+    except Exception as e:
+        logger.error(f"Error getting taken cards: {e}")
+        return JSONResponse({
+            "success": False,
+            "taken_cards": []
+        })
 
 @app.post("/api/game/mark_number")
 async def mark_number(request: Request):
@@ -416,8 +477,7 @@ async def call_bingo(request: Request):
             content={"success": False, "error": str(e)}
         )
 
-# ============= NEW ENDPOINTS ADDED HERE =============
-
+# ============= Leaderboard endpoint =============
 @app.get("/api/leaderboard")
 async def get_leaderboard():
     """Get top players leaderboard"""
@@ -431,6 +491,7 @@ async def get_leaderboard():
     ]
     return JSONResponse(leaderboard)
 
+# ============= Bingo game page =============
 @app.get("/bingo_game.html")
 async def bingo_game_redirect(request: Request):
     """Serve the bingo game page"""
@@ -440,8 +501,6 @@ async def bingo_game_redirect(request: Request):
         return HTMLResponse(content=content, status_code=200)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Bingo Game Page Not Found</h1><p>Please ensure bingo_game.html exists in the webapp folder.</p>", status_code=404)
-
-# ============= END OF NEW ENDPOINTS =============
 
 # WebSocket connection manager
 class ConnectionManager:
