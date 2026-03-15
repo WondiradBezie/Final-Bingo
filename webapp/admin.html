@@ -91,7 +91,7 @@
                             <div class="stat-info">
                                 <div class="stat-label">Total Users</div>
                                 <div class="stat-value" id="total-users">0</div>
-                                <div class="stat-change positive" id="user-change">+12%</div>
+                                <div class="stat-change positive" id="user-change">+0%</div>
                             </div>
                         </div>
                         
@@ -102,7 +102,7 @@
                             <div class="stat-info">
                                 <div class="stat-label">Active Games</div>
                                 <div class="stat-value" id="active-games">0</div>
-                                <div class="stat-change" id="game-change">3 waiting</div>
+                                <div class="stat-change" id="game-change">0 waiting</div>
                             </div>
                         </div>
                         
@@ -113,7 +113,7 @@
                             <div class="stat-info">
                                 <div class="stat-label">Total Volume</div>
                                 <div class="stat-value" id="total-volume">0</div>
-                                <div class="stat-change positive" id="volume-change">+5.3%</div>
+                                <div class="stat-change positive" id="volume-change">+0%</div>
                             </div>
                         </div>
                         
@@ -167,7 +167,7 @@
                     </div>
                 </div>
 
-                <!-- Games Management Page (hidden by default) -->
+                <!-- Games Management Page -->
                 <div class="games-page" style="display: none;">
                     <div class="page-header">
                         <h2>Game Management</h2>
@@ -213,6 +213,20 @@
                     
                     <!-- Pagination -->
                     <div class="pagination" id="games-pagination"></div>
+                </div>
+
+                <!-- Rooms Management Page -->
+                <div class="rooms-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Room Management</h2>
+                        <button class="btn-primary" onclick="addRoom()">
+                            <i class="fas fa-plus"></i> Add Room
+                        </button>
+                    </div>
+                    
+                    <div class="rooms-grid" id="rooms-list">
+                        <!-- Filled by JS -->
+                    </div>
                 </div>
 
                 <!-- Users Management Page -->
