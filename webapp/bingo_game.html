@@ -264,7 +264,7 @@
 
         /* Right Side Container */
         .right-container {
-            flex: 1;
+            flex: 0.9;
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -275,7 +275,7 @@
         .current-call-section {
             background: #ff4444;
             color: white;
-            padding: 10px 12px;
+            padding: 8px 12px;
             border-radius: 8px;
             flex-shrink: 0;
         }
@@ -293,32 +293,32 @@
         }
 
         .call-label {
-            font-size: 13px;
+            font-size: 12px;
             opacity: 0.9;
             font-weight: 500;
         }
 
         .call-number-big {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 800;
             line-height: 1;
         }
 
         .call-letter-big {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
         }
 
         .recent-calls-row {
             display: flex;
-            gap: 6px;
-            margin-top: 6px;
+            gap: 5px;
+            margin-top: 5px;
             justify-content: flex-end;
         }
 
         .recent-ball {
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             background: rgba(255,255,255,0.2);
             color: white;
@@ -326,10 +326,10 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 11px;
         }
 
-        /* Player Card */
+        /* Player Card - More realistic size */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -339,6 +339,7 @@
             flex-direction: column;
             flex: 1;
             min-height: 0;
+            max-height: 320px;
         }
 
         .card-header {
@@ -393,6 +394,7 @@
             border: 1px solid #dee2e6;
             cursor: pointer;
             min-height: 0;
+            aspect-ratio: 1/1;
         }
 
         .player-cell.header {
@@ -403,6 +405,7 @@
             border: none;
             cursor: default;
             flex-shrink: 0;
+            aspect-ratio: 1/1;
         }
 
         .player-cell.marked {
@@ -422,19 +425,19 @@
             color: white !important;
         }
 
-        /* Bingo Button */
+        /* Bingo Button - Text changed to just BINGO */
         .bingo-section {
             flex-shrink: 0;
         }
 
         .bingo-btn {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             cursor: pointer;
             text-transform: uppercase;
@@ -529,7 +532,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card -->
+                    <!-- Player Card - More realistic size -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -538,9 +541,9 @@
                         <div class="bingo-grid" id="bingo-grid"></div>
                     </div>
 
-                    <!-- Bingo Button -->
+                    <!-- Bingo Button - Now just "BINGO" -->
                     <div class="bingo-section">
-                        <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 CALL BINGO!</button>
+                        <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
                 </div>
             </div>
