@@ -175,7 +175,7 @@
             min-height: 0;
         }
 
-        /* Left Side - Number Board - NARROWER BUTTONS */
+        /* Left Side - Number Board - INCREASED FONT SIZE ONLY */
         .number-board {
             flex: 0.9;
             background: #f8f9fa;
@@ -229,7 +229,7 @@
         .column-header {
             text-align: center;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 10px; /* Increased from 9px */
             padding: 1px;
             border-radius: 3px;
             margin-bottom: 1px;
@@ -247,7 +247,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 8px;
+            font-size: 9px; /* Increased from 8px */
             font-weight: 600;
             background: white;
             border-radius: 2px;
@@ -264,12 +264,12 @@
             border-color: #2e7d32;
         }
 
-        /* Right Side Container - WIDER */
+        /* Right Side Container - NO CHANGES TO WIDTH */
         .right-container {
-            flex: 1.1;
+            flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 5px; /* Reduced gap to bring bingo button closer */
+            gap: 2px; /* REDUCED to bring bingo button closer */
             min-height: 0;
         }
 
@@ -331,7 +331,7 @@
             font-size: 11px;
         }
 
-        /* Player Card - BIGGER BUTTONS */
+        /* Player Card - ONLY HEIGHT CHANGED */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -370,7 +370,7 @@
         .bingo-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 4px; /* Increased gap for more visibility */
+            gap: 4px;
             flex: 1;
             min-height: 0;
         }
@@ -378,7 +378,7 @@
         .player-column {
             display: flex;
             flex-direction: column;
-            gap: 4px; /* Increased gap for more height between buttons */
+            gap: 4px;
             height: 100%;
         }
 
@@ -387,32 +387,32 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px; /* Larger font */
+            font-size: 16px;
             font-weight: 700;
             background: white;
-            border-radius: 8px; /* More rounded */
+            border-radius: 8px;
             color: #333;
             border: 2px solid #dee2e6;
             cursor: pointer;
             width: 100%;
             aspect-ratio: 1/1;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.15); /* Stronger shadow */
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
             height: auto;
             min-height: 0;
-            max-height: 58px; /* Taller buttons */
+            max-height: 62px; /* INCREASED from 58px for more height */
         }
 
         .player-cell.header {
             background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            font-size: 16px; /* Larger font */
+            font-size: 16px;
             font-weight: 800;
             border: none;
             cursor: default;
             flex-shrink: 0;
             aspect-ratio: 1/1;
             box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-            max-height: 58px; /* Taller buttons */
+            max-height: 62px; /* INCREASED from 58px for more height */
         }
 
         .player-cell.marked {
@@ -434,20 +434,21 @@
             color: white !important;
         }
 
-        /* Bingo Button - Closer to card */
+        /* Bingo Button - CLOSER TO CARD */
         .bingo-section {
             flex-shrink: 0;
-            margin-top: 0; /* Remove any top margin */
+            margin-top: 0;
+            padding-top: 0;
         }
 
         .bingo-btn {
             width: 100%;
-            padding: 10px; /* Slightly smaller padding */
+            padding: 8px; /* Reduced padding */
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 16px; /* Slightly smaller font */
+            font-size: 15px; /* Slightly smaller */
             font-weight: bold;
             cursor: pointer;
             text-transform: uppercase;
@@ -519,7 +520,7 @@
 
             <!-- Main Game Area -->
             <div class="main-content">
-                <!-- Left Side - Number Board - NARROWER BUTTONS -->
+                <!-- Left Side - Number Board - INCREASED FONT SIZE -->
                 <div class="number-board">
                     <div class="board-header">
                         <span class="board-title">📋 CALLED NUMBERS</span>
@@ -542,7 +543,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - BIGGER BUTTONS -->
+                    <!-- Player Card - INCREASED HEIGHT ONLY -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -551,7 +552,7 @@
                         <div class="bingo-grid" id="bingo-grid"></div>
                     </div>
 
-                    <!-- Bingo Button - Closer to card -->
+                    <!-- Bingo Button - CLOSER TO CARD -->
                     <div class="bingo-section">
                         <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
