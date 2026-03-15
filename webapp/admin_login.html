@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Joy Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #4158D0 0%, #C850C0 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #4158D0;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            border-color: #4158D0;
+            outline: none;
+        }
+
+        .user-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4158D0, #C850C0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .user-id {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #4158D0, #C850C0);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(65,88,208,0.3);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .success {
+            color: #28a745;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🔐 Joy Bingo</h1>
+            <p>Admin Panel Login</p>
+        </div>
+
+        <div id="telegramUser" class="user-info hidden">
+            <div class="user-avatar" id="userAvatar"></div>
+            <div class="user-details">
+                <div class="user-name" id="userName"></div>
+                <div class="user-id" id="userId"></div>
+            </div>
+        </div>
+
+        <div id="noTelegramWarning" class="warning hidden">
+            ⚠️ You must open this page from Telegram WebApp
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label>Admin Password</label>
+                <input type="password" id="password" placeholder="Enter admin password" required>
+            </div>
+            <button type="submit" id="loginBtn">Login to Admin Panel</button>
+        </form>
+
+        <div id="message" class="error"></div>
+    </div>
+
+    <script>
+        const tg = window.Telegram?.WebApp;
+        
+        if (tg) {
+            tg.expand();
+            tg.ready();
+            
+            // Get Telegram user info
+            const user = tg.initDataUnsafe?.user;
+            
+            if (user) {
+                document.getElementById('telegramUser').classList.remove('hidden');
+                document.getElementById('userName').textContent = `${user.first_name} ${user.last_name || ''}`;
+                document.getElementById('userId').textContent = `ID: ${user.id}`;
+                document.getElementById('userAvatar').textContent = user.first_name.charAt(0).toUpperCase();
+                
+                // Store user ID for login
+                document.getElementById('loginForm').dataset.userId = user.id;
+            } else {
+                document.getElementById('noTelegramWarning').classList.remove('hidden');
+                document.getElementById('noTelegramWarning').textContent = '⚠️ Could not get Telegram user info. Make sure you opened this from Telegram.';
+            }
+        } else {
+            document.getElementById('noTelegramWarning').classList.remove('hidden');
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = document.getElementById('password').value;
+            const user = tg?.initDataUnsafe?.user;
+            const loginBtn = document.getElementById('loginBtn');
+            const messageDiv = document.getElementById('message');
+            
+            if (!user) {
+                messageDiv.textContent = 'Telegram user not found';
+                return;
+            }
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            messageDiv.textContent = '';
+            messageDiv.className = 'error';
+            
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: password,
+                        user_id: user.id
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('adminToken', data.token);
+                    messageDiv.className = 'success';
+                    messageDiv.textContent = 'Login successful! Redirecting...';
+                    setTimeout(() => {
+                        window.location.href = '/webapp/admin.html';
+                    }, 1500);
+                } else {
+                    messageDiv.textContent = data.error || 'Login failed';
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login to Admin Panel';
+                }
+            } catch (error) {
+                messageDiv.textContent = 'Connection error';
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login to Admin Panel';
+            }
+        });
+
+        // Check if already logged in
+        if (localStorage.getItem('adminToken')) {
+            window.location.href = '/webapp/admin.html';
+        }
+    </script>
+</body>
+</html>
