@@ -30,7 +30,9 @@
             border-radius: 15px;
             padding: 12px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            height: fit-content;
+            height: 98vh;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Header Stats - Single Line */
@@ -42,7 +44,7 @@
             color: white;
             padding: 10px 12px;
             border-radius: 10px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             flex-wrap: nowrap;
             gap: 5px;
         }
@@ -76,276 +78,12 @@
             white-space: nowrap;
         }
 
-        /* Main Content - Two Columns */
-        .main-content {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 0;
-        }
-
-        /* Left Side - Number Board */
-        .number-board {
-            flex: 1;
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 8px;
-            border: 1px solid #e0e0e0;
-        }
-
-        .board-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-            padding: 0 2px;
-        }
-
-        .board-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .called-badge {
-            background: #ff4444;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 9px;
-            font-weight: bold;
-        }
-
-        .numbers-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 3px;
-        }
-
-        .number-column {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .column-header {
-            text-align: center;
-            font-weight: bold;
-            font-size: 11px;
-            padding: 2px;
-            border-radius: 4px;
-            margin-bottom: 2px;
-        }
-
-        .column-header.b { background: #ffcdd2; color: #b71c1c; }
-        .column-header.i { background: #fff9c4; color: #f57f17; }
-        .column-header.n { background: #c8e6c9; color: #1b5e20; }
-        .column-header.g { background: #bbdefb; color: #0d47a1; }
-        .column-header.o { background: #e1bee7; color: #4a148c; }
-
-        .number-cell {
-            aspect-ratio: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            font-weight: 600;
-            background: white;
-            border-radius: 4px;
-            color: #333;
-            border: 1px solid #dee2e6;
-        }
-
-        .number-cell.called {
-            background: #4caf50 !important;
-            color: white !important;
-            border-color: #2e7d32;
-        }
-
-        /* Right Side Container */
-        .right-container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        /* Current Call Section - On Top of Card */
-        .current-call-section {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #ff4444;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 8px;
-        }
-
-        .call-left {
-            display: flex;
-            align-items: baseline;
-            gap: 5px;
-        }
-
-        .call-label {
-            font-size: 11px;
-            opacity: 0.9;
-            font-weight: 500;
-        }
-
-        .call-number-big {
-            font-size: 20px;
-            font-weight: bold;
-        }
-
-        .call-letter-big {
-            font-size: 16px;
-            font-weight: bold;
-        }
-
-        .recent-calls {
-            display: flex;
-            gap: 4px;
-        }
-
-        .recent-ball {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 11px;
-        }
-
-        /* Player Card */
-        .player-card {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 8px;
-            border: 1px solid #e0e0e0;
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-            padding: 0 2px;
-        }
-
-        .card-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .card-number {
-            background: #833AB4;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 9px;
-            font-weight: bold;
-        }
-
-        .bingo-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 3px;
-        }
-
-        .player-column {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .player-cell {
-            aspect-ratio: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            font-weight: 600;
-            background: white;
-            border-radius: 4px;
-            color: #333;
-            border: 1px solid #dee2e6;
-            cursor: pointer;
-        }
-
-        .player-cell.header {
-            background: linear-gradient(135deg, #405DE6, #833AB4);
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            border: none;
-            cursor: default;
-        }
-
-        .player-cell.marked {
-            background: #4caf50 !important;
-            color: white !important;
-            border-color: #2e7d32;
-        }
-
-        .player-cell.free {
-            background: #ffd700;
-            color: #333;
-            font-weight: bold;
-        }
-
-        .player-cell.free.marked {
-            background: #4caf50 !important;
-            color: white !important;
-        }
-
-        /* Bingo Button - Below Card */
-        .bingo-section {
-            margin-top: 0;
-        }
-
-        .bingo-btn {
-            width: 100%;
-            padding: 10px;
-            background: #ff4444;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.2s;
-        }
-
-        .bingo-btn:hover {
-            background: #ff6666;
-            transform: translateY(-2px);
-        }
-
-        .bingo-btn:active {
-            transform: translateY(0);
-        }
-
-        /* Status Text - Below Everything */
-        .status-text {
-            text-align: center;
-            color: #666;
-            font-size: 11px;
-            margin-top: 8px;
-            padding: 5px;
-            background: #f1f5f9;
-            border-radius: 6px;
-        }
-
-        /* Card Selection Screen */
+        /* Card Selection Screen - Use full height */
         .selection-screen {
             padding: 0;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .selection-header {
@@ -353,10 +91,11 @@
             color: white;
             padding: 12px;
             border-radius: 10px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .selection-title {
@@ -372,23 +111,28 @@
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
-            gap: 4px;
-            max-height: 350px;
+            gap: 5px;
+            flex: 1;
             overflow-y: auto;
-            padding: 5px;
+            padding: 8px;
             background: #f8f9fa;
             border-radius: 8px;
+            min-height: 0;
         }
 
         .card-btn {
-            padding: 8px 2px;
-            font-size: 11px;
+            padding: 12px 2px;
+            font-size: 12px;
             font-weight: 600;
             border: 1px solid #dee2e6;
             border-radius: 4px;
             background: white;
             cursor: pointer;
             text-align: center;
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .card-btn.taken {
@@ -410,6 +154,301 @@
             padding: 30px;
             color: #666;
             font-size: 14px;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Game Screen - Use full height */
+        #gameScreen {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Main Content - Two Columns with flex growth */
+        .main-content {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Left Side - Number Board */
+        .number-board {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 8px;
+            border: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .board-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            padding: 0 2px;
+            flex-shrink: 0;
+        }
+
+        .board-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .called-badge {
+            background: #ff4444;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 9px;
+            font-weight: bold;
+        }
+
+        .numbers-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 3px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .number-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            height: 100%;
+        }
+
+        .column-header {
+            text-align: center;
+            font-weight: bold;
+            font-size: 11px;
+            padding: 2px;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            flex-shrink: 0;
+        }
+
+        .column-header.b { background: #ffcdd2; color: #b71c1c; }
+        .column-header.i { background: #fff9c4; color: #f57f17; }
+        .column-header.n { background: #c8e6c9; color: #1b5e20; }
+        .column-header.g { background: #bbdefb; color: #0d47a1; }
+        .column-header.o { background: #e1bee7; color: #4a148c; }
+
+        .number-cell {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 600;
+            background: white;
+            border-radius: 4px;
+            color: #333;
+            border: 1px solid #dee2e6;
+            min-height: 0;
+        }
+
+        .number-cell.called {
+            background: #4caf50 !important;
+            color: white !important;
+            border-color: #2e7d32;
+        }
+
+        /* Right Side Container */
+        .right-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+
+        /* Current Call Section */
+        .current-call-section {
+            background: #ff4444;
+            color: white;
+            padding: 10px 12px;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .call-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .call-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .call-label {
+            font-size: 13px;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+
+        .call-number-big {
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .call-letter-big {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .recent-calls-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            justify-content: flex-end;
+        }
+
+        .recent-ball {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        /* Player Card */
+        .player-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 8px;
+            border: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            padding: 0 2px;
+            flex-shrink: 0;
+        }
+
+        .card-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .card-number {
+            background: #833AB4;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: bold;
+        }
+
+        .bingo-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 3px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .player-column {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            height: 100%;
+        }
+
+        .player-cell {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            background: white;
+            border-radius: 4px;
+            color: #333;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            min-height: 0;
+        }
+
+        .player-cell.header {
+            background: linear-gradient(135deg, #405DE6, #833AB4);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            border: none;
+            cursor: default;
+            flex-shrink: 0;
+        }
+
+        .player-cell.marked {
+            background: #4caf50 !important;
+            color: white !important;
+            border-color: #2e7d32;
+        }
+
+        .player-cell.free {
+            background: #ffd700;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .player-cell.free.marked {
+            background: #4caf50 !important;
+            color: white !important;
+        }
+
+        /* Bingo Button */
+        .bingo-section {
+            flex-shrink: 0;
+        }
+
+        .bingo-btn {
+            width: 100%;
+            padding: 12px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+
+        .bingo-btn:hover {
+            background: #ff6666;
+            transform: translateY(-2px);
+        }
+
+        .bingo-btn:active {
+            transform: translateY(0);
         }
 
         .hidden {
@@ -445,7 +484,7 @@
                 <div class="game-title">🎮 JOY</div>
                 <div class="stat-block">
                     <div class="stat-label">DERASH</div>
-                    <div class="stat-value" id="derash">3056</div>
+                    <div class="stat-value" id="derash">3820</div>
                 </div>
                 <div class="stat-block">
                     <div class="stat-label">PLAYERS</div>
@@ -457,7 +496,7 @@
                 </div>
                 <div class="stat-block">
                     <div class="stat-label">CALL</div>
-                    <div class="stat-value" id="call-interval">1</div>
+                    <div class="stat-value" id="call-count">0</div>
                 </div>
                 <div class="stat-block">
                     <div class="stat-label">GAME №</div>
@@ -478,18 +517,16 @@
 
                 <!-- Right Side - Current Call, Card, and Bingo Button -->
                 <div class="right-container">
-                    <!-- Current Call Section - On Top of Card -->
+                    <!-- Current Call Section -->
                     <div class="current-call-section">
-                        <div class="call-left">
-                            <span class="call-label">CURRENT CALL</span>
-                            <span class="call-letter-big" id="current-letter">G</span>
-                            <span class="call-number-big" id="current-number">52</span>
+                        <div class="call-row">
+                            <div class="call-left">
+                                <span class="call-label">CURRENT CALL</span>
+                                <span class="call-letter-big" id="current-letter">-</span>
+                                <span class="call-number-big" id="current-number">-</span>
+                            </div>
                         </div>
-                        <div class="recent-calls" id="recent-calls">
-                            <div class="recent-ball">52</div>
-                            <div class="recent-ball">48</div>
-                            <div class="recent-ball">45</div>
-                        </div>
+                        <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
                     <!-- Player Card -->
@@ -501,16 +538,11 @@
                         <div class="bingo-grid" id="bingo-grid"></div>
                     </div>
 
-                    <!-- Bingo Button - Below Card -->
+                    <!-- Bingo Button -->
                     <div class="bingo-section">
                         <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 CALL BINGO!</button>
                     </div>
                 </div>
-            </div>
-
-            <!-- Status Text - Below Everything -->
-            <div class="status-text" id="status">
-                Please wait for this game to be completed
             </div>
         </div>
     </div>
@@ -529,11 +561,12 @@
         // Game state
         let selectedCard = null;
         let takenCards = [];
-        let calledNumbers = [52, 48, 45, 42, 38, 35, 31, 28, 24, 21];
+        let calledNumbers = [];
         let markedNumbers = new Set(['FREE']);
         let gameActive = true;
         let currentCard = [];
         let cardNumber = null;
+        let callCount = 0;
 
         // Initialize number board (column-wise)
         function initNumberBoard() {
@@ -649,9 +682,7 @@
             renderBingoCard();
             
             if (checkForBingo()) {
-                document.getElementById('status').textContent = "🎉 BINGO! You won! 🎉";
-                document.getElementById('status').style.background = '#4caf50';
-                document.getElementById('status').style.color = 'white';
+                // Just visual feedback, no status text anymore
             }
         }
 
@@ -787,7 +818,7 @@
                 
                 initNumberBoard();
                 renderBingoCard();
-                updateCurrentCall(calledNumbers[calledNumbers.length - 1] || 52);
+                updateCurrentCall();
                 
                 startGame();
                 
@@ -798,16 +829,24 @@
         }
 
         // Update current call
-        function updateCurrentCall(num) {
+        function updateCurrentCall() {
+            if (calledNumbers.length === 0) {
+                document.getElementById('current-letter').textContent = '-';
+                document.getElementById('current-number').textContent = '-';
+                document.getElementById('recent-calls').innerHTML = '';
+                return;
+            }
+            
+            const currentNum = calledNumbers[calledNumbers.length - 1];
             let letter = '';
-            if (num <= 15) letter = 'B';
-            else if (num <= 30) letter = 'I';
-            else if (num <= 45) letter = 'N';
-            else if (num <= 60) letter = 'G';
+            if (currentNum <= 15) letter = 'B';
+            else if (currentNum <= 30) letter = 'I';
+            else if (currentNum <= 45) letter = 'N';
+            else if (currentNum <= 60) letter = 'G';
             else letter = 'O';
             
             document.getElementById('current-letter').textContent = letter;
-            document.getElementById('current-number').textContent = num;
+            document.getElementById('current-number').textContent = currentNum;
             
             const recent = document.getElementById('recent-calls');
             recent.innerHTML = '';
@@ -823,12 +862,14 @@
         function addCalledNumber(num) {
             if (!calledNumbers.includes(num)) {
                 calledNumbers.push(num);
+                callCount = calledNumbers.length;
                 
                 const cell = document.getElementById(`num-${num}`);
                 if (cell) cell.classList.add('called');
                 
                 document.getElementById('called-count').textContent = `${calledNumbers.length}/75`;
-                updateCurrentCall(num);
+                document.getElementById('call-count').textContent = callCount;
+                updateCurrentCall();
             }
         }
 
@@ -842,7 +883,7 @@
             }, 2000);
             
             // Simulate number calls
-            setInterval(() => {
+            const gameInterval = setInterval(() => {
                 if (!gameActive) return;
                 
                 if (calledNumbers.length < 75) {
