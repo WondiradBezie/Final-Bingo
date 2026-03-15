@@ -331,7 +331,7 @@
             font-size: 11px;
         }
 
-        /* Player Card - INCREASED HEIGHT */
+        /* Player Card - WITH BINGO BUTTON INSIDE */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -399,7 +399,7 @@
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
             height: auto;
             min-height: 0;
-            max-height: 65px; /* INCREASED from 62px */
+            max-height: 65px;
         }
 
         .player-cell.header {
@@ -412,7 +412,7 @@
             flex-shrink: 0;
             aspect-ratio: 1/1;
             box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-            max-height: 65px; /* INCREASED from 62px */
+            max-height: 65px;
         }
 
         .player-cell.marked {
@@ -434,35 +434,30 @@
             color: white !important;
         }
 
-        /* Bingo Button - EXTREMELY CLOSE to card */
-        .bingo-section {
-            flex-shrink: 0;
-            margin-top: 0;
-            padding-top: 0;
-        }
-
-        .bingo-btn {
+        /* Bingo Button - INSIDE the card container */
+        .card-bingo-btn {
             width: 100%;
-            padding: 6px; /* Minimal padding */
+            margin-top: 4px;
+            padding: 8px;
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 14px; /* Smaller font */
+            font-size: 15px;
             font-weight: bold;
             cursor: pointer;
             text-transform: uppercase;
             letter-spacing: 1px;
             transition: all 0.2s;
-            line-height: 1.2;
+            flex-shrink: 0;
         }
 
-        .bingo-btn:hover {
+        .card-bingo-btn:hover {
             background: #ff6666;
             transform: translateY(-1px);
         }
 
-        .bingo-btn:active {
+        .card-bingo-btn:active {
             transform: translateY(0);
         }
 
@@ -530,7 +525,7 @@
                     <div class="numbers-grid" id="number-board"></div>
                 </div>
 
-                <!-- Right Side - Current Call, Card, and Bingo Button -->
+                <!-- Right Side - Current Call and Card with Bingo Button INSIDE -->
                 <div class="right-container">
                     <!-- Current Call Section -->
                     <div class="current-call-section">
@@ -544,18 +539,16 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - INCREASED HEIGHT -->
+                    <!-- Player Card - WITH BINGO BUTTON INSIDE -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
                             <span class="card-number" id="selected-card-num">#0</span>
                         </div>
                         <div class="bingo-grid" id="bingo-grid"></div>
-                    </div>
-
-                    <!-- Bingo Button - EXTREMELY CLOSE to card -->
-                    <div class="bingo-section">
-                        <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
+                        
+                        <!-- BINGO BUTTON INSIDE THE CARD -->
+                        <button class="card-bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
                 </div>
             </div>
