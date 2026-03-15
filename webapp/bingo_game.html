@@ -330,7 +330,7 @@
             font-size: 11px;
         }
 
-        /* Player Card - More realistic size */
+        /* Player Card - Only height reduced, everything else unchanged */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -377,12 +377,12 @@
         .player-column {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
             height: 100%;
         }
 
         .player-cell {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -393,9 +393,12 @@
             color: #333;
             border: 2px solid #dee2e6;
             cursor: pointer;
-            min-height: 0;
+            width: 100%;
             aspect-ratio: 1/1;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: auto;
+            min-height: 0;
+            max-height: 48px;
         }
 
         .player-cell.header {
@@ -408,6 +411,7 @@
             flex-shrink: 0;
             aspect-ratio: 1/1;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            max-height: 48px;
         }
 
         .player-cell.marked {
@@ -535,7 +539,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - More realistic size -->
+                    <!-- Player Card - Only height reduced -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
