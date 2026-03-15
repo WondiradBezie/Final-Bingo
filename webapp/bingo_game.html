@@ -331,11 +331,11 @@
             font-size: 11px;
         }
 
-        /* Player Card - WITH BINGO BUTTON INSIDE */
+        /* Player Card - WITH BINGO BUTTON EXTREMELY CLOSE */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
-            padding: 8px;
+            padding: 6px; /* Reduced padding */
             border: 1px solid #e0e0e0;
             display: flex;
             flex-direction: column;
@@ -347,7 +347,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 6px;
+            margin-bottom: 4px; /* Reduced margin */
             padding: 0 2px;
             flex-shrink: 0;
         }
@@ -373,6 +373,7 @@
             gap: 4px;
             flex: 1;
             min-height: 0;
+            margin-bottom: 2px; /* Minimal space before button */
         }
 
         .player-column {
@@ -399,7 +400,7 @@
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
             height: auto;
             min-height: 0;
-            max-height: 65px;
+            max-height: 68px; /* INCREASED from 65px */
         }
 
         .player-cell.header {
@@ -412,7 +413,7 @@
             flex-shrink: 0;
             aspect-ratio: 1/1;
             box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-            max-height: 65px;
+            max-height: 68px; /* INCREASED from 65px */
         }
 
         .player-cell.marked {
@@ -434,11 +435,11 @@
             color: white !important;
         }
 
-        /* Bingo Button - INSIDE the card container */
+        /* Bingo Button - EXTREMELY CLOSE to buttons */
         .card-bingo-btn {
             width: 100%;
-            margin-top: 4px;
-            padding: 8px;
+            margin-top: 0; /* No margin at all */
+            padding: 6px; /* Slightly smaller padding */
             background: #ff4444;
             color: white;
             border: none;
@@ -539,7 +540,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - WITH BINGO BUTTON INSIDE -->
+                    <!-- Player Card - WITH BINGO BUTTON EXTREMELY CLOSE -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -547,7 +548,7 @@
                         </div>
                         <div class="bingo-grid" id="bingo-grid"></div>
                         
-                        <!-- BINGO BUTTON INSIDE THE CARD -->
+                        <!-- BINGO BUTTON - NO SPACE BETWEEN GRID AND BUTTON -->
                         <button class="card-bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
                 </div>
