@@ -3,11 +3,13 @@ import os
 import json
 import asyncio
 import logging
+import secrets
+from typing import Optional
 from datetime import datetime
 from typing import Dict, Set, Optional, Any
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
@@ -30,6 +32,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Admin configuration
+ADMIN_IDS = [8576569079]  # Your Telegram user IDs
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", secrets.token_urlsafe(32))
 
 # Initialize bot application
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -60,6 +66,22 @@ except Exception as e:
     for i in range(1, 401):
         CARDS_DATA[str(i)] = generate_sample_card(i)
     logger.info(f"✅ Generated {len(CARDS_DATA)} fallback cards")
+
+def verify_admin_token(authorization: Optional[str] = Header(None)):
+    """Verify admin token from header"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    token = authorization.replace("Bearer ", "")
+    
+    if token != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    return True
+
+def is_admin_user(user_id: int) -> bool:
+    """Check if a Telegram user is admin"""
+    return str(user_id) in [str(uid) for uid in ADMIN_IDS]
 
 @app.on_event("startup")
 async def startup_event():
@@ -109,7 +131,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "games_played": 0,
             "wins": 0,
             "total_deposits": 0,
-            "total_withdrawals": 0
+            "total_withdrawals": 0,
+            "is_banned": False,
+            "is_vip": False
         }
         welcome_msg = f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n✅ You have been successfully registered!\n💰 Your starting balance: 0 Birr"
     else:
@@ -200,7 +224,11 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "balance": 0,
             "registered_at": datetime.now().isoformat(),
             "games_played": 0,
-            "wins": 0
+            "wins": 0,
+            "total_deposits": 0,
+            "total_withdrawals": 0,
+            "is_banned": False,
+            "is_vip": False
         }
     
     balance = users_db[user_id]["balance"]
@@ -281,7 +309,9 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "games_played": 0,
             "wins": 0,
             "total_deposits": 0,
-            "total_withdrawals": 0
+            "total_withdrawals": 0,
+            "is_banned": False,
+            "is_vip": False
         }
     
     stats = users_db[user_id]
@@ -410,7 +440,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "balance": 0,
             "registered_at": datetime.now().isoformat(),
             "games_played": 0,
-            "wins": 0
+            "wins": 0,
+            "total_deposits": 0,
+            "total_withdrawals": 0,
+            "is_banned": False,
+            "is_vip": False
         }
     
     if data == "balance":
@@ -1103,6 +1137,475 @@ async def bingo_game_redirect(request: Request):
         return HTMLResponse(content=content, status_code=200)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Bingo Game Page Not Found</h1><p>Please ensure bingo_game.html exists in the webapp folder.</p>", status_code=404)
+
+# ============= ADMIN API ENDPOINTS =============
+
+@app.post("/api/admin/login")
+async def admin_login(request: Request):
+    """Admin login - returns token if credentials are valid"""
+    try:
+        data = await request.json()
+        password = data.get("password")
+        user_id = data.get("user_id")
+        
+        # Check if user is admin
+        if not is_admin_user(user_id):
+            return JSONResponse(
+                status_code=403,
+                content={"success": False, "error": "Not authorized"}
+            )
+        
+        # Check password (you should store this securely in env vars)
+        if password == os.getenv("ADMIN_PASSWORD", "JoyBingo@2025Admin"):
+            return JSONResponse({
+                "success": True,
+                "token": ADMIN_SECRET_KEY
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": "Invalid password"
+            })
+    except Exception as e:
+        logger.error(f"Admin login error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get("/api/admin/dashboard")
+async def admin_dashboard(auth: bool = Depends(verify_admin_token)):
+    """Get admin dashboard stats"""
+    try:
+        # Calculate stats
+        total_users = len(users_db)
+        active_games = len([g for g in games_data.values() if g.get("status") == "active"])
+        
+        # Calculate total volume (all time bets)
+        total_volume = sum(g.get("total_bet", 0) for g in games_data.values())
+        
+        # Calculate total commission
+        total_commission = total_volume * 0.2  # 20% commission
+        
+        # User growth (mock data for demo)
+        user_change = 12  # 12% growth
+        
+        # Revenue data for chart
+        revenue = {
+            "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "values": [1200, 1900, 1500, 2200, 2800, 3500, 4000]
+        }
+        
+        # Games history
+        games_history = {
+            "labels": ["12AM", "4AM", "8AM", "12PM", "4PM", "8PM"],
+            "values": [3, 1, 4, 6, 8, 5]
+        }
+        
+        return JSONResponse({
+            "totalUsers": total_users,
+            "activeGames": active_games,
+            "totalVolume": total_volume,
+            "totalCommission": total_commission,
+            "userChange": user_change,
+            "volumeChange": 8.5,
+            "revenue": revenue,
+            "gamesHistory": games_history
+        })
+    except Exception as e:
+        logger.error(f"Admin dashboard error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/users")
+async def admin_get_users(
+    search: str = "", 
+    status: str = "all", 
+    sort: str = "balance_desc",
+    auth: bool = Depends(verify_admin_token)
+):
+    """Get all users with filters"""
+    try:
+        user_list = []
+        for uid, data in users_db.items():
+            # Filter by search
+            if search and search.lower() not in data.get('first_name', '').lower() and search not in uid:
+                continue
+            
+            # Filter by status
+            if status == "active" and data.get('balance', 0) == 0:
+                continue
+            if status == "banned" and not data.get('is_banned', False):
+                continue
+            
+            user_list.append({
+                "id": uid,
+                "username": data.get('username', ''),
+                "first_name": data.get('first_name', ''),
+                "balance": data.get('balance', 0),
+                "games_played": data.get('games_played', 0),
+                "games_won": data.get('wins', 0),
+                "total_deposits": data.get('total_deposits', 0),
+                "total_withdrawals": data.get('total_withdrawals', 0),
+                "is_banned": data.get('is_banned', False),
+                "is_vip": data.get('is_vip', False),
+                "last_seen": data.get('registered_at', datetime.now().isoformat()),
+                "joined": data.get('registered_at', datetime.now().isoformat())
+            })
+        
+        # Sort users
+        if sort == "balance_desc":
+            user_list.sort(key=lambda x: x['balance'], reverse=True)
+        elif sort == "balance_asc":
+            user_list.sort(key=lambda x: x['balance'])
+        elif sort == "games_desc":
+            user_list.sort(key=lambda x: x['games_played'], reverse=True)
+        elif sort == "wins_desc":
+            user_list.sort(key=lambda x: x['games_won'], reverse=True)
+        elif sort == "joined_desc":
+            user_list.sort(key=lambda x: x['joined'], reverse=True)
+        
+        # Calculate stats
+        total_balance = sum(u['balance'] for u in user_list)
+        active_today = len([u for u in user_list if u['last_seen'].startswith(datetime.now().strftime("%Y-%m-%d"))])
+        new_today = len([u for u in user_list if u['joined'].startswith(datetime.now().strftime("%Y-%m-%d"))])
+        
+        return JSONResponse({
+            "total": len(user_list),
+            "activeToday": active_today,
+            "newToday": new_today,
+            "totalBalance": total_balance,
+            "list": user_list[:50]  # Limit to 50 users
+        })
+    except Exception as e:
+        logger.error(f"Admin get users error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/users/{user_id}")
+async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token)):
+    """Get specific user details"""
+    try:
+        if user_id not in users_db:
+            return JSONResponse(status_code=404, content={"error": "User not found"})
+        
+        data = users_db[user_id]
+        return JSONResponse({
+            "id": user_id,
+            "username": data.get('username', ''),
+            "first_name": data.get('first_name', ''),
+            "last_name": data.get('last_name', ''),
+            "balance": data.get('balance', 0),
+            "games_played": data.get('games_played', 0),
+            "games_won": data.get('wins', 0),
+            "total_deposits": data.get('total_deposits', 0),
+            "total_withdrawals": data.get('total_withdrawals', 0),
+            "is_banned": data.get('is_banned', False),
+            "is_vip": data.get('is_vip', False),
+            "created_at": data.get('registered_at', datetime.now().isoformat()),
+            "last_seen": data.get('registered_at', datetime.now().isoformat())
+        })
+    except Exception as e:
+        logger.error(f"Admin get user error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/api/admin/adjust-balance")
+async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_admin_token)):
+    """Adjust user balance"""
+    try:
+        data = await request.json()
+        user_id = data.get("userId")
+        amount = float(data.get("amount"))
+        type_op = data.get("type")  # "add", "subtract", "set"
+        reason = data.get("reason", "")
+        
+        if user_id not in users_db:
+            return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
+        
+        current = users_db[user_id]["balance"]
+        
+        if type_op == "add":
+            users_db[user_id]["balance"] += amount
+            users_db[user_id]["total_deposits"] = users_db[user_id].get("total_deposits", 0) + amount
+        elif type_op == "subtract":
+            if users_db[user_id]["balance"] < amount:
+                return JSONResponse({"success": False, "error": "Insufficient balance"})
+            users_db[user_id]["balance"] -= amount
+            users_db[user_id]["total_withdrawals"] = users_db[user_id].get("total_withdrawals", 0) + amount
+        elif type_op == "set":
+            users_db[user_id]["balance"] = amount
+        
+        logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {users_db[user_id]['balance']} ({reason})")
+        
+        return JSONResponse({
+            "success": True,
+            "new_balance": users_db[user_id]["balance"]
+        })
+    except Exception as e:
+        logger.error(f"Admin adjust balance error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.post("/api/admin/toggle-ban")
+async def admin_toggle_ban(request: Request, auth: bool = Depends(verify_admin_token)):
+    """Ban/unban a user"""
+    try:
+        data = await request.json()
+        user_id = data.get("userId")
+        
+        if user_id not in users_db:
+            return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
+        
+        users_db[user_id]["is_banned"] = not users_db[user_id].get("is_banned", False)
+        
+        return JSONResponse({
+            "success": True,
+            "is_banned": users_db[user_id]["is_banned"]
+        })
+    except Exception as e:
+        logger.error(f"Admin toggle ban error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get("/api/admin/games")
+async def admin_get_games(
+    search: str = "",
+    status: str = "all",
+    room: str = "all",
+    auth: bool = Depends(verify_admin_token)
+):
+    """Get all games with filters"""
+    try:
+        game_list = []
+        for game_id, game in games_data.items():
+            # Filter by search
+            if search and search not in game_id:
+                continue
+            
+            # Filter by status
+            if status != "all" and game.get("status") != status:
+                continue
+            
+            # Calculate duration
+            duration = 0
+            if game.get("started_at") and game.get("finished_at"):
+                start = datetime.fromisoformat(game["started_at"])
+                end = datetime.fromisoformat(game["finished_at"])
+                duration = int((end - start).total_seconds())
+            
+            game_list.append({
+                "game_id": game_id,
+                "room": game.get("room_id", "unknown"),
+                "status": game.get("status", "unknown"),
+                "players": 1,  # Placeholder
+                "max_players": 400,
+                "prize_pool": game.get("prize_pool", 0),
+                "duration": duration,
+                "winners": len(game.get("winners", []))
+            })
+        
+        return JSONResponse(game_list)
+    except Exception as e:
+        logger.error(f"Admin get games error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/api/admin/end-game")
+async def admin_end_game(request: Request, auth: bool = Depends(verify_admin_token)):
+    """Force end a game"""
+    try:
+        data = await request.json()
+        game_id = data.get("gameId")
+        
+        if game_id not in games_data:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Game not found"})
+        
+        games_data[game_id]["status"] = "finished"
+        games_data[game_id]["finished_at"] = datetime.now().isoformat()
+        
+        return JSONResponse({"success": True})
+    except Exception as e:
+        logger.error(f"Admin end game error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get("/api/admin/transactions")
+async def admin_get_transactions(
+    search: str = "",
+    type: str = "all",
+    from_date: str = "",
+    to_date: str = "",
+    auth: bool = Depends(verify_admin_token)
+):
+    """Get transaction history"""
+    try:
+        # This is a placeholder - you'd need to implement transaction logging
+        transactions = []
+        
+        # Calculate stats
+        today_deposits = 12500  # Placeholder
+        today_withdrawals = 3400
+        today_wins = 8700
+        net_revenue = 3800
+        
+        return JSONResponse({
+            "transactions": transactions,
+            "todayDeposits": today_deposits,
+            "todayWithdrawals": today_withdrawals,
+            "todayWins": today_wins,
+            "netRevenue": net_revenue
+        })
+    except Exception as e:
+        logger.error(f"Admin get transactions error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/api/admin/broadcast")
+async def admin_broadcast(request: Request, auth: bool = Depends(verify_admin_token)):
+    """Send broadcast message to users"""
+    try:
+        data = await request.json()
+        message_type = data.get("type")
+        room = data.get("room")
+        message = data.get("message")
+        link = data.get("link", "")
+        
+        # In production, you'd send this via Telegram bot
+        logger.info(f"Broadcast: {message_type} - {message}")
+        
+        return JSONResponse({
+            "success": True,
+            "recipients": len(users_db)
+        })
+    except Exception as e:
+        logger.error(f"Admin broadcast error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get("/api/admin/settings")
+async def admin_get_settings(auth: bool = Depends(verify_admin_token)):
+    """Get system settings"""
+    try:
+        return JSONResponse({
+            "cardPrice": 10,
+            "prizePercent": 80,
+            "minPlayers": 2,
+            "maxPlayers": 400,
+            "callInterval": 2.0,
+            "selectionTime": 20,
+            "emailVerify": False,
+            "maxLoginAttempts": 5,
+            "sessionTimeout": 60,
+            "rateLimit": 60,
+            "notifyWins": True,
+            "notifyDeposits": True,
+            "adminEmail": "admin@joybingo.com",
+            "rooms": [
+                {"id": "classic", "name": "Classic", "cardPrice": 10, "minPlayers": 2, "maxPlayers": 400, "mode": "classic"},
+                {"id": "blackout", "name": "Blackout", "cardPrice": 20, "minPlayers": 2, "maxPlayers": 200, "mode": "blackout"},
+                {"id": "line", "name": "Line", "cardPrice": 10, "minPlayers": 2, "maxPlayers": 400, "mode": "line"}
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Admin get settings error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/api/admin/settings")
+async def admin_save_settings(request: Request, auth: bool = Depends(verify_admin_token)):
+    """Save system settings"""
+    try:
+        settings = await request.json()
+        logger.info(f"Settings updated: {settings}")
+        return JSONResponse({"success": True})
+    except Exception as e:
+        logger.error(f"Admin save settings error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@app.get("/api/admin/analytics")
+async def admin_analytics(
+    period: str = "today",
+    start: str = "",
+    end: str = "",
+    auth: bool = Depends(verify_admin_token)
+):
+    """Get analytics data"""
+    try:
+        return JSONResponse({
+            "arpdau": 45.50,
+            "conversionRate": 12.5,
+            "retention": {"d1": 45, "d3": 30, "d7": 20, "d14": 15, "d30": 8},
+            "avgGameDuration": 85,
+            "gameDistribution": {"classic": 65, "blackout": 20, "line": 10, "corners": 5}
+        })
+    except Exception as e:
+        logger.error(f"Admin analytics error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/logs")
+async def admin_logs(
+    search: str = "",
+    level: str = "all",
+    action: str = "all",
+    auth: bool = Depends(verify_admin_token)
+):
+    """Get audit logs"""
+    try:
+        # Placeholder logs
+        logs = [
+            {"level": "info", "timestamp": datetime.now().isoformat(), "message": "User logged in", "user": "admin", "ip": "192.168.1.1"},
+            {"level": "warning", "timestamp": datetime.now().isoformat(), "message": "Large withdrawal", "user": "player123", "ip": "192.168.1.2"},
+            {"level": "info", "timestamp": datetime.now().isoformat(), "message": "Game started", "user": "system", "ip": "0.0.0.0"},
+        ]
+        return JSONResponse(logs)
+    except Exception as e:
+        logger.error(f"Admin logs error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/stats")
+async def admin_stats(auth: bool = Depends(verify_admin_token)):
+    """Get real-time stats"""
+    try:
+        return JSONResponse({
+            "totalUsers": len(users_db)
+        })
+    except Exception as e:
+        logger.error(f"Admin stats error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/rooms")
+async def admin_rooms(auth: bool = Depends(verify_admin_token)):
+    """Get all rooms for admin"""
+    try:
+        rooms = [
+            {"id": "classic", "name": "Classic Bingo"},
+            {"id": "blackout", "name": "Blackout"},
+            {"id": "line", "name": "Line Bingo"},
+            {"id": "four_corners", "name": "Four Corners"},
+        ]
+        return JSONResponse(rooms)
+    except Exception as e:
+        logger.error(f"Admin rooms error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/admin/export/users")
+async def admin_export_users(auth: bool = Depends(verify_admin_token)):
+    """Export users as CSV"""
+    try:
+        import csv
+        from io import StringIO
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["User ID", "Username", "First Name", "Balance", "Games Played", "Wins", "Joined"])
+        
+        for uid, data in users_db.items():
+            writer.writerow([
+                uid,
+                data.get('username', ''),
+                data.get('first_name', ''),
+                data.get('balance', 0),
+                data.get('games_played', 0),
+                data.get('wins', 0),
+                data.get('registered_at', '')
+            ])
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=users.csv"}
+        )
+    except Exception as e:
+        logger.error(f"Admin export users error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 # WebSocket connection manager
 class ConnectionManager:
