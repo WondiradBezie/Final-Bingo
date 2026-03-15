@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 import httpx
 import random
 
@@ -38,6 +38,9 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koy
 # Create bot application
 bot_app = None
 
+# User database (simple in-memory for demo - replace with real database)
+users_db = {}
+
 # Load cards from cards.json
 CARDS_DATA = {}
 try:
@@ -46,7 +49,6 @@ try:
     logger.info(f"✅ Loaded {len(CARDS_DATA)} cards from cards.json")
 except Exception as e:
     logger.error(f"❌ Failed to load cards.json: {e}")
-    # Generate fallback cards if file missing
     def generate_sample_card(card_number):
         card = []
         for col in range(5):
@@ -67,10 +69,22 @@ async def startup_event():
         # Build bot application
         bot_app = Application.builder().token(BOT_TOKEN).build()
         
-        # Add handlers
+        # Add command handlers
         bot_app.add_handler(CommandHandler("start", start_command))
         bot_app.add_handler(CommandHandler("help", help_command))
         bot_app.add_handler(CommandHandler("play", play_command))
+        bot_app.add_handler(CommandHandler("balance", balance_command))
+        bot_app.add_handler(CommandHandler("deposit", deposit_command))
+        bot_app.add_handler(CommandHandler("withdraw", withdraw_command))
+        bot_app.add_handler(CommandHandler("profile", profile_command))
+        bot_app.add_handler(CommandHandler("rules", rules_command))
+        bot_app.add_handler(CommandHandler("leaderboard", leaderboard_command))
+        
+        # Add callback query handler for inline buttons
+        bot_app.add_handler(CallbackQueryHandler(button_callback))
+        
+        # Add message handler for text messages
+        bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         
         # Initialize bot
         await bot_app.initialize()
@@ -80,57 +94,654 @@ async def startup_event():
 
 # Command handlers
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
+    """Handle /start command - Main menu with all options"""
     user = update.effective_user
+    user_id = str(user.id)
+    
+    # Check if user exists in database, if not register them
+    if user_id not in users_db:
+        users_db[user_id] = {
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "balance": 0,
+            "registered_at": datetime.now().isoformat(),
+            "games_played": 0,
+            "wins": 0,
+            "total_deposits": 0,
+            "total_withdrawals": 0
+        }
+        welcome_msg = f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n✅ You have been successfully registered!\n💰 Your starting balance: 0 Birr"
+    else:
+        welcome_msg = f"🎉 Welcome back to Joy Bingo, {user.first_name}!"
+    
     logger.info(f"User {user.id} (@{user.username}) started the bot")
     
+    # Create main menu keyboard with multiple buttons
     keyboard = [
-        [InlineKeyboardButton("🎮 Play Bingo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
+         InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
+        [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
+         InlineKeyboardButton("👤 My Profile", callback_data="profile")],
+        [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
+         InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
         [InlineKeyboardButton("❓ Help", callback_data="help"),
-         InlineKeyboardButton("💰 Balance", callback_data="balance")]
+         InlineKeyboardButton("📞 Contact Support", callback_data="support")]
     ]
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    balance = users_db[user_id]["balance"]
+    
     await update.message.reply_text(
-        f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n"
-        f"Click the button below to start playing:",
-        reply_markup=reply_markup
+        f"{welcome_msg}\n\n"
+        f"💰 Your current balance: **{balance} Birr**\n"
+        f"🎮 Choose an option below:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
     help_text = """
-🎮 **How to Play Bingo:**
-1. Click "Play Bingo"
-2. Select a card (cost varies by room)
-3. Numbers are called every 2 seconds
-4. Mark numbers on your card
+🎮 **JOY BINGO - HELP & COMMANDS**
+═══════════════════════════
+
+**📋 AVAILABLE COMMANDS:**
+• `/start` - Main menu
+• `/play` - Play bingo
+• `/balance` - Check your balance
+• `/deposit` - Add funds
+• `/withdraw` - Withdraw winnings
+• `/profile` - View your profile
+• `/rules` - Game rules
+• `/leaderboard` - Top players
+• `/help` - This help menu
+
+**🎯 HOW TO PLAY:**
+1. Click "PLAY BINGO" button
+2. Select a card (1-400)
+3. Numbers are called every 3 seconds
+4. Click numbers on your card to mark them
 5. Get BINGO to win!
 
-📋 **Commands:**
-/start - Main menu
-/help - This help
-/play - Open game directly
+**💰 DEPOSIT & WITHDRAW:**
+• Minimum deposit: 10 Birr
+• Minimum withdrawal: 50 Birr
+• Withdrawals processed within 24h
 
-🏆 **Game Modes:**
-• Classic - Mark all numbers
-• Blackout - Fill entire card
-• Line - Complete any line
-• Four Corners - Get all corners
+**🏆 PRIZES:**
+• Winner takes 80% of the pot
+• Multiple winners split the prize
 
-Need help? Contact @admin
+Need more help? Contact @admin
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /play command"""
-    keyboard = [[InlineKeyboardButton("🎮 Open Game", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
+    """Handle /play command - Direct link to game"""
+    keyboard = [[InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "Click below to enter the game lobby:",
+        "🎮 Click below to enter the game lobby:",
         reply_markup=reply_markup
     )
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /balance command - Check balance"""
+    user_id = str(update.effective_user.id)
+    
+    if user_id not in users_db:
+        users_db[user_id] = {
+            "username": update.effective_user.username,
+            "first_name": update.effective_user.first_name,
+            "balance": 0,
+            "registered_at": datetime.now().isoformat(),
+            "games_played": 0,
+            "wins": 0
+        }
+    
+    balance = users_db[user_id]["balance"]
+    
+    keyboard = [
+        [InlineKeyboardButton("📥 Deposit", callback_data="deposit"),
+         InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("🎮 Play Bingo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]
+    ]
+    
+    await update.message.reply_text(
+        f"💰 **YOUR BALANCE**\n\n"
+        f"Current Balance: **{balance} Birr**\n"
+        f"Total Deposits: **{users_db[user_id].get('total_deposits', 0)} Birr**\n"
+        f"Total Withdrawals: **{users_db[user_id].get('total_withdrawals', 0)} Birr**\n"
+        f"Games Played: **{users_db[user_id].get('games_played', 0)}**\n"
+        f"Wins: **{users_db[user_id].get('wins', 0)}**",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /deposit command - Deposit funds"""
+    keyboard = [
+        [InlineKeyboardButton("💳 10 Birr", callback_data="deposit_10"),
+         InlineKeyboardButton("💳 50 Birr", callback_data="deposit_50")],
+        [InlineKeyboardButton("💳 100 Birr", callback_data="deposit_100"),
+         InlineKeyboardButton("💳 500 Birr", callback_data="deposit_500")],
+        [InlineKeyboardButton("💳 1000 Birr", callback_data="deposit_1000"),
+         InlineKeyboardButton("💳 Other", callback_data="deposit_other")],
+        [InlineKeyboardButton("◀️ Back", callback_data="balance")]
+    ]
+    
+    await update.message.reply_text(
+        "📥 **DEPOSIT FUNDS**\n\n"
+        "Select amount to deposit:\n"
+        "• Minimum deposit: 10 Birr\n"
+        "• Maximum deposit: 10,000 Birr\n\n"
+        "Click an amount below to proceed:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /withdraw command - Withdraw funds"""
+    user_id = str(update.effective_user.id)
+    balance = users_db.get(user_id, {}).get("balance", 0)
+    
+    keyboard = [
+        [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
+        [InlineKeyboardButton("📋 Withdrawal History", callback_data="withdraw_history")],
+        [InlineKeyboardButton("◀️ Back", callback_data="balance")]
+    ]
+    
+    await update.message.reply_text(
+        f"📤 **WITHDRAW FUNDS**\n\n"
+        f"Available Balance: **{balance} Birr**\n"
+        f"Minimum Withdrawal: **50 Birr**\n"
+        f"Processing Time: **24 hours**\n\n"
+        f"To request a withdrawal, click the button below:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /profile command - View user profile"""
+    user = update.effective_user
+    user_id = str(user.id)
+    
+    if user_id not in users_db:
+        users_db[user_id] = {
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "balance": 0,
+            "registered_at": datetime.now().isoformat(),
+            "games_played": 0,
+            "wins": 0,
+            "total_deposits": 0,
+            "total_withdrawals": 0
+        }
+    
+    stats = users_db[user_id]
+    win_rate = (stats["wins"] / stats["games_played"] * 100) if stats["games_played"] > 0 else 0
+    
+    profile_text = f"""
+👤 **USER PROFILE**
+══════════════════
+
+**Personal Info:**
+• Name: {stats['first_name']} {stats.get('last_name', '')}
+• Username: @{stats.get('username', 'N/A')}
+• User ID: `{user_id}`
+• Registered: {stats['registered_at'][:10]}
+
+**Game Statistics:**
+• Games Played: {stats['games_played']}
+• Wins: {stats['wins']}
+• Win Rate: {win_rate:.1f}%
+
+**Financial:**
+• Current Balance: {stats['balance']} Birr
+• Total Deposits: {stats.get('total_deposits', 0)} Birr
+• Total Withdrawals: {stats.get('total_withdrawals', 0)} Birr
+"""
+    
+    keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]]
+    
+    await update.message.reply_text(
+        profile_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /rules command - Game rules"""
+    rules_text = """
+📋 **JOY BINGO - RULES**
+══════════════════════
+
+**🎯 OBJECTIVE:**
+Mark all numbers in a row, column, or diagonal to win!
+
+**🃏 CARD SELECTION:**
+• Choose from 400 unique cards
+• Each card costs 10 Birr
+• FREE space (⭐) is automatically marked
+
+**🔢 NUMBER CALLING:**
+• Numbers 1-75 are called randomly
+• New number every 3 seconds
+• Called numbers turn green on the board
+
+**✅ MARKING NUMBERS:**
+• Click numbers on your card to mark them
+• Numbers must be called first
+• Marked numbers turn green
+
+**🏆 WINNING:**
+• First player to complete a line wins!
+• Multiple winners split the prize pool
+• Prize pool = 80% of total bets
+
+**💰 PRIZE DISTRIBUTION:**
+• 80% to winners
+• 20% platform fee
+
+**⚠️ FAIR PLAY:**
+• All games are verified
+• Random number generation is fair
+• Cheating results in ban
+
+Good luck and have fun! 🎮
+"""
+    keyboard = [[InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
+    
+    await update.message.reply_text(
+        rules_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /leaderboard command - Top players"""
+    # Sort users by balance and wins
+    sorted_users = sorted(users_db.items(), key=lambda x: (x[1]['wins'], x[1]['balance']), reverse=True)
+    
+    leaderboard_text = "🏆 **TOP PLAYERS**\n══════════════════\n\n"
+    
+    for i, (user_id, data) in enumerate(sorted_users[:10], 1):
+        name = data.get('first_name', 'Unknown')[:10]
+        wins = data.get('wins', 0)
+        balance = data.get('balance', 0)
+        
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        leaderboard_text += f"{medal} **{name}** - {wins} wins ({balance} Birr)\n"
+    
+    if not sorted_users:
+        leaderboard_text += "No players yet. Be the first!\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]
+    ]
+    
+    await update.message.reply_text(
+        leaderboard_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+# Callback handler for inline buttons
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button callbacks"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = str(update.effective_user.id)
+    data = query.data
+    
+    # Ensure user exists
+    if user_id not in users_db:
+        users_db[user_id] = {
+            "username": update.effective_user.username,
+            "first_name": update.effective_user.first_name,
+            "balance": 0,
+            "registered_at": datetime.now().isoformat(),
+            "games_played": 0,
+            "wins": 0
+        }
+    
+    if data == "balance":
+        balance = users_db[user_id]["balance"]
+        keyboard = [
+            [InlineKeyboardButton("📥 Deposit", callback_data="deposit"),
+             InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
+            [InlineKeyboardButton("🎮 Play Bingo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]
+        ]
+        await query.edit_message_text(
+            f"💰 **YOUR BALANCE**\n\n"
+            f"Current Balance: **{balance} Birr**\n"
+            f"Total Deposits: **{users_db[user_id].get('total_deposits', 0)} Birr**\n"
+            f"Total Withdrawals: **{users_db[user_id].get('total_withdrawals', 0)} Birr**\n"
+            f"Games Played: **{users_db[user_id].get('games_played', 0)}**\n"
+            f"Wins: **{users_db[user_id].get('wins', 0)}**",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "deposit":
+        keyboard = [
+            [InlineKeyboardButton("💳 10 Birr", callback_data="deposit_10"),
+             InlineKeyboardButton("💳 50 Birr", callback_data="deposit_50")],
+            [InlineKeyboardButton("💳 100 Birr", callback_data="deposit_100"),
+             InlineKeyboardButton("💳 500 Birr", callback_data="deposit_500")],
+            [InlineKeyboardButton("💳 1000 Birr", callback_data="deposit_1000"),
+             InlineKeyboardButton("💳 Other", callback_data="deposit_other")],
+            [InlineKeyboardButton("◀️ Back", callback_data="balance")]
+        ]
+        await query.edit_message_text(
+            "📥 **DEPOSIT FUNDS**\n\n"
+            "Select amount to deposit:\n"
+            "• Minimum deposit: 10 Birr\n"
+            "• Maximum deposit: 10,000 Birr\n\n"
+            "Click an amount below to proceed:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data.startswith("deposit_"):
+        amount = data.replace("deposit_", "")
+        if amount == "other":
+            await query.edit_message_text(
+                "📥 **CUSTOM DEPOSIT**\n\n"
+                "Please send the amount you want to deposit (10-10000 Birr):\n\n"
+                "Example: `500`",
+                parse_mode='Markdown'
+            )
+            context.user_data['awaiting_deposit'] = True
+        else:
+            # Process deposit
+            users_db[user_id]["balance"] += int(amount)
+            users_db[user_id]["total_deposits"] = users_db[user_id].get("total_deposits", 0) + int(amount)
+            
+            await query.edit_message_text(
+                f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
+                f"Amount: **{amount} Birr**\n"
+                f"New Balance: **{users_db[user_id]['balance']} Birr**\n\n"
+                f"Thank you for your deposit!",
+                parse_mode='Markdown'
+            )
+    
+    elif data == "withdraw":
+        balance = users_db[user_id]["balance"]
+        keyboard = [
+            [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
+            [InlineKeyboardButton("📋 Withdrawal History", callback_data="withdraw_history")],
+            [InlineKeyboardButton("◀️ Back", callback_data="balance")]
+        ]
+        await query.edit_message_text(
+            f"📤 **WITHDRAW FUNDS**\n\n"
+            f"Available Balance: **{balance} Birr**\n"
+            f"Minimum Withdrawal: **50 Birr**\n"
+            f"Processing Time: **24 hours**\n\n"
+            f"To request a withdrawal, click the button below:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "withdraw_request":
+        await query.edit_message_text(
+            "📤 **WITHDRAWAL REQUEST**\n\n"
+            "Please send the amount you want to withdraw (minimum 50 Birr):\n\n"
+            "Example: `200`",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_withdraw'] = True
+    
+    elif data == "profile":
+        stats = users_db[user_id]
+        win_rate = (stats["wins"] / stats["games_played"] * 100) if stats["games_played"] > 0 else 0
+        
+        profile_text = f"""
+👤 **USER PROFILE**
+══════════════════
+
+**Personal Info:**
+• Name: {stats['first_name']} {stats.get('last_name', '')}
+• Username: @{stats.get('username', 'N/A')}
+• User ID: `{user_id}`
+• Registered: {stats['registered_at'][:10]}
+
+**Game Statistics:**
+• Games Played: {stats['games_played']}
+• Wins: {stats['wins']}
+• Win Rate: {win_rate:.1f}%
+
+**Financial:**
+• Current Balance: {stats['balance']} Birr
+• Total Deposits: {stats.get('total_deposits', 0)} Birr
+• Total Withdrawals: {stats.get('total_withdrawals', 0)} Birr
+"""
+        keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]]
+        await query.edit_message_text(
+            profile_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "rules":
+        rules_text = """
+📋 **JOY BINGO - RULES**
+══════════════════════
+
+**🎯 OBJECTIVE:**
+Mark all numbers in a row, column, or diagonal to win!
+
+**🃏 CARD SELECTION:**
+• Choose from 400 unique cards
+• Each card costs 10 Birr
+• FREE space (⭐) is automatically marked
+
+**🔢 NUMBER CALLING:**
+• Numbers 1-75 are called randomly
+• New number every 3 seconds
+• Called numbers turn green on the board
+
+**✅ MARKING NUMBERS:**
+• Click numbers on your card to mark them
+• Numbers must be called first
+• Marked numbers turn green
+
+**🏆 WINNING:**
+• First player to complete a line wins!
+• Multiple winners split the prize pool
+• Prize pool = 80% of total bets
+
+**💰 PRIZE DISTRIBUTION:**
+• 80% to winners
+• 20% platform fee
+"""
+        keyboard = [[InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
+        await query.edit_message_text(
+            rules_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "leaderboard":
+        sorted_users = sorted(users_db.items(), key=lambda x: (x[1]['wins'], x[1]['balance']), reverse=True)
+        
+        leaderboard_text = "🏆 **TOP PLAYERS**\n══════════════════\n\n"
+        
+        for i, (uid, data) in enumerate(sorted_users[:10], 1):
+            name = data.get('first_name', 'Unknown')[:10]
+            wins = data.get('wins', 0)
+            balance = data.get('balance', 0)
+            
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            leaderboard_text += f"{medal} **{name}** - {wins} wins ({balance} Birr)\n"
+        
+        if not sorted_users:
+            leaderboard_text += "No players yet. Be the first!\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]
+        ]
+        await query.edit_message_text(
+            leaderboard_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "help":
+        help_text = """
+🎮 **JOY BINGO - HELP**
+═══════════════════
+
+**COMMANDS:**
+• /start - Main menu
+• /play - Play bingo
+• /balance - Check balance
+• /deposit - Add funds
+• /withdraw - Withdraw
+• /profile - Your stats
+• /rules - Game rules
+• /leaderboard - Top players
+• /help - This menu
+
+**SUPPORT:**
+• Email: support@joybingo.com
+• Telegram: @joybingo_support
+
+**Need assistance?** Contact our support team!
+"""
+        keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]]
+        await query.edit_message_text(
+            help_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "support":
+        support_text = """
+📞 **CONTACT SUPPORT**
+══════════════════
+
+**How can we help you?**
+
+**Common Issues:**
+• Deposit problems
+• Withdrawal issues
+• Game questions
+• Technical support
+• Account issues
+
+**Contact Methods:**
+• Email: support@joybingo.com
+• Telegram: @joybingo_support
+• Response time: 24 hours
+
+Please include your User ID when contacting support.
+"""
+        keyboard = [[InlineKeyboardButton("◀️ Back", callback_data="help")]]
+        await query.edit_message_text(
+            support_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    elif data == "back_to_menu":
+        keyboard = [
+            [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+            [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
+             InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
+            [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
+             InlineKeyboardButton("👤 My Profile", callback_data="profile")],
+            [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
+             InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+            [InlineKeyboardButton("❓ Help", callback_data="help"),
+             InlineKeyboardButton("📞 Support", callback_data="support")]
+        ]
+        
+        balance = users_db[user_id]["balance"]
+        await query.edit_message_text(
+            f"🎉 Welcome back!\n\n"
+            f"💰 Your current balance: **{balance} Birr**\n"
+            f"🎮 Choose an option below:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+# Message handler for text messages
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages (for deposits/withdrawals)"""
+    user_id = str(update.effective_user.id)
+    text = update.message.text.strip()
+    
+    # Check if we're awaiting a deposit amount
+    if context.user_data.get('awaiting_deposit'):
+        try:
+            amount = int(text)
+            if 10 <= amount <= 10000:
+                users_db[user_id]["balance"] += amount
+                users_db[user_id]["total_deposits"] = users_db[user_id].get("total_deposits", 0) + amount
+                
+                await update.message.reply_text(
+                    f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
+                    f"Amount: **{amount} Birr**\n"
+                    f"New Balance: **{users_db[user_id]['balance']} Birr**\n\n"
+                    f"Thank you for your deposit!",
+                    parse_mode='Markdown'
+                )
+                context.user_data['awaiting_deposit'] = False
+            else:
+                await update.message.reply_text(
+                    "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
+                )
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Please enter a valid number."
+            )
+    
+    # Check if we're awaiting a withdrawal amount
+    elif context.user_data.get('awaiting_withdraw'):
+        try:
+            amount = int(text)
+            if amount < 50:
+                await update.message.reply_text(
+                    "❌ Minimum withdrawal amount is 50 Birr."
+                )
+            elif amount > users_db[user_id]["balance"]:
+                await update.message.reply_text(
+                    f"❌ Insufficient balance. Your balance is {users_db[user_id]['balance']} Birr."
+                )
+            else:
+                users_db[user_id]["balance"] -= amount
+                users_db[user_id]["total_withdrawals"] = users_db[user_id].get("total_withdrawals", 0) + amount
+                
+                await update.message.reply_text(
+                    f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
+                    f"Amount: **{amount} Birr**\n"
+                    f"New Balance: **{users_db[user_id]['balance']} Birr**\n"
+                    f"Processing Time: **24 hours**\n\n"
+                    f"You will be notified when your withdrawal is processed.",
+                    parse_mode='Markdown'
+                )
+                context.user_data['awaiting_withdraw'] = False
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Please enter a valid number."
+            )
+    
+    else:
+        # If no context, show help
+        await update.message.reply_text(
+            "I don't understand that command. Use /help to see available commands."
+        )
 
 # Health check endpoint
 @app.get("/")
@@ -309,7 +920,6 @@ async def get_game_state(user_id: str):
         "state": {"in_game": False}
     })
 
-# ============= MODIFIED: Select card endpoint with cards.json =============
 @app.post("/api/game/select_card")
 async def select_card(request: Request):
     """Select a bingo card from pre-generated cards"""
@@ -317,16 +927,14 @@ async def select_card(request: Request):
         data = await request.json()
         user_id = data.get("user_id")
         room_id = data.get("room_id")
-        card_number = str(data.get("card_number"))  # Convert to string for JSON key
+        card_number = str(data.get("card_number"))
         
-        # Simple validation
         if not all([user_id, room_id, card_number]):
             return JSONResponse(
                 status_code=400,
                 content={"success": False, "error": "Missing required fields"}
             )
         
-        # Check if card exists
         if card_number not in CARDS_DATA:
             return JSONResponse(
                 status_code=404,
@@ -341,18 +949,16 @@ async def select_card(request: Request):
                     content={"success": False, "error": f"Card #{card_number} already taken"}
                 )
         
-        # Store card selection
         game_key = f"game:{room_id}:{user_id}"
         games_data[game_key] = {
             "user_id": user_id,
             "room_id": room_id,
             "card_number": card_number,
-            "card_data": CARDS_DATA[card_number],  # Store the actual card
+            "card_data": CARDS_DATA[card_number],
             "marked_numbers": [],
             "selected_at": datetime.now().isoformat()
         }
         
-        # Update player session with card info
         if user_id in player_sessions:
             player_sessions[user_id]["card_number"] = card_number
         else:
@@ -379,7 +985,6 @@ async def select_card(request: Request):
             content={"success": False, "error": str(e)}
         )
 
-# ============= NEW: Get taken cards endpoint =============
 @app.get("/api/game/taken_cards/{room_id}")
 async def get_taken_cards(room_id: str):
     """Get list of taken card numbers in a room"""
@@ -417,13 +1022,11 @@ async def mark_number(request: Request):
                 content={"success": False, "error": "Game not found"}
             )
         
-        # Add to marked numbers
         if number not in games_data[game_key]["marked_numbers"]:
             games_data[game_key]["marked_numbers"].append(number)
         
-        # Check for bingo (simplified)
         marked_count = len(games_data[game_key]["marked_numbers"])
-        has_bingo = marked_count >= 5  # Simplified condition
+        has_bingo = marked_count >= 5
         
         return JSONResponse({
             "success": True,
@@ -454,7 +1057,6 @@ async def call_bingo(request: Request):
                 content={"success": False, "error": "Game not found"}
             )
         
-        # Verify bingo (simplified)
         marked_count = len(games_data[game_key]["marked_numbers"])
         is_valid = marked_count >= 5
         
@@ -462,7 +1064,7 @@ async def call_bingo(request: Request):
             return JSONResponse({
                 "success": True,
                 "message": "BINGO! You win!",
-                "prize": 100  # Placeholder prize
+                "prize": 100
             })
         else:
             return JSONResponse({
@@ -477,21 +1079,21 @@ async def call_bingo(request: Request):
             content={"success": False, "error": str(e)}
         )
 
-# ============= Leaderboard endpoint =============
 @app.get("/api/leaderboard")
 async def get_leaderboard():
     """Get top players leaderboard"""
-    # Simple placeholder leaderboard
-    leaderboard = [
-        {"username": "Player1", "wins": 10, "winnings": 5000},
-        {"username": "Player2", "wins": 8, "winnings": 4000},
-        {"username": "Player3", "wins": 6, "winnings": 3000},
-        {"username": "Player4", "wins": 5, "winnings": 2500},
-        {"username": "Player5", "wins": 4, "winnings": 2000},
-    ]
+    sorted_users = sorted(users_db.items(), key=lambda x: (x[1].get('wins', 0), x[1].get('balance', 0)), reverse=True)
+    
+    leaderboard = []
+    for i, (user_id, data) in enumerate(sorted_users[:10]):
+        leaderboard.append({
+            "username": data.get('first_name', 'Unknown'),
+            "wins": data.get('wins', 0),
+            "winnings": data.get('balance', 0)
+        })
+    
     return JSONResponse(leaderboard)
 
-# ============= Bingo game page =============
 @app.get("/bingo_game.html")
 async def bingo_game_redirect(request: Request):
     """Serve the bingo game page"""
@@ -516,7 +1118,6 @@ class ConnectionManager:
         self.user_rooms[user_id] = room_id
         logger.info(f"User {user_id} connected to room {room_id}")
         
-        # Update player count
         if room_id in rooms_data:
             rooms_data[room_id]["players"] = len(self.active_connections[room_id])
     
@@ -535,12 +1136,10 @@ class ConnectionManager:
             disconnected = set()
             for connection in self.active_connections[room_id]:
                 try:
-                    # Find user for this connection (simplified)
                     await connection.send_json(message)
                 except:
                     disconnected.add(connection)
             
-            # Clean up disconnected
             for conn in disconnected:
                 self.active_connections[room_id].discard(conn)
             
@@ -553,7 +1152,6 @@ manager = ConnectionManager()
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     await manager.connect(websocket, room_id, user_id)
     try:
-        # Send welcome message
         await websocket.send_json({
             "type": "connected",
             "message": f"Connected to room {room_id}",
@@ -562,18 +1160,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
         })
         
         while True:
-            # Wait for messages
             data = await websocket.receive_text()
             try:
                 message = json.loads(data)
                 logger.info(f"WebSocket message from {user_id}: {message.get('type')}")
                 
-                # Handle different message types
                 if message.get("type") == "ping":
                     await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
                 
                 elif message.get("type") == "mark_number":
-                    # Handle number marking
                     number = message.get("number")
                     await manager.broadcast(room_id, {
                         "type": "number_marked",
@@ -589,7 +1184,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                     })
                 
                 elif message.get("type") == "call_bingo":
-                    # Handle bingo call
                     await manager.broadcast(room_id, {
                         "type": "bingo_called",
                         "user_id": user_id,
@@ -603,7 +1197,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                     })
                 
                 else:
-                    # Echo back for now
                     await websocket.send_json({
                         "type": "ack",
                         "received": message,
