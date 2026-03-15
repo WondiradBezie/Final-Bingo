@@ -175,9 +175,9 @@
             min-height: 0;
         }
 
-        /* Left Side - Number Board (unchanged) */
+        /* Left Side - Number Board - NARROWER BUTTONS */
         .number-board {
-            flex: 1;
+            flex: 0.9;
             background: #f8f9fa;
             border-radius: 10px;
             padding: 8px;
@@ -229,10 +229,10 @@
         .column-header {
             text-align: center;
             font-weight: bold;
-            font-size: 10px;
-            padding: 2px;
-            border-radius: 4px;
-            margin-bottom: 2px;
+            font-size: 9px;
+            padding: 1px;
+            border-radius: 3px;
+            margin-bottom: 1px;
             flex-shrink: 0;
         }
 
@@ -247,14 +247,15 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 9px;
+            font-size: 8px;
             font-weight: 600;
             background: white;
-            border-radius: 3px;
+            border-radius: 2px;
             color: #333;
             border: 1px solid #dee2e6;
             min-height: 0;
-            padding: 0 1px;
+            padding: 0;
+            margin: 0;
         }
 
         .number-cell.called {
@@ -263,12 +264,12 @@
             border-color: #2e7d32;
         }
 
-        /* Right Side Container */
+        /* Right Side Container - WIDER */
         .right-container {
-            flex: 1;
+            flex: 1.1;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 5px; /* Reduced gap to bring bingo button closer */
             min-height: 0;
         }
 
@@ -330,7 +331,7 @@
             font-size: 11px;
         }
 
-        /* Player Card - ONLY RIGHT SIDE BUTTONS CHANGED */
+        /* Player Card - BIGGER BUTTONS */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -369,7 +370,7 @@
         .bingo-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 3px; /* Slightly reduced from 4px */
+            gap: 4px; /* Increased gap for more visibility */
             flex: 1;
             min-height: 0;
         }
@@ -377,7 +378,7 @@
         .player-column {
             display: flex;
             flex-direction: column;
-            gap: 2px; /* Reduced from 3px */
+            gap: 4px; /* Increased gap for more height between buttons */
             height: 100%;
         }
 
@@ -386,32 +387,32 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 15px; /* Slightly increased from 14px */
+            font-size: 16px; /* Larger font */
             font-weight: 700;
             background: white;
-            border-radius: 6px;
+            border-radius: 8px; /* More rounded */
             color: #333;
             border: 2px solid #dee2e6;
             cursor: pointer;
             width: 100%;
             aspect-ratio: 1/1;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15); /* Stronger shadow */
             height: auto;
             min-height: 0;
-            max-height: 52px; /* Increased from 48px */
+            max-height: 58px; /* Taller buttons */
         }
 
         .player-cell.header {
             background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            font-size: 15px; /* Slightly increased from 14px */
+            font-size: 16px; /* Larger font */
             font-weight: 800;
             border: none;
             cursor: default;
             flex-shrink: 0;
             aspect-ratio: 1/1;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            max-height: 52px; /* Increased from 48px */
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+            max-height: 58px; /* Taller buttons */
         }
 
         .player-cell.marked {
@@ -433,19 +434,20 @@
             color: white !important;
         }
 
-        /* Bingo Button */
+        /* Bingo Button - Closer to card */
         .bingo-section {
             flex-shrink: 0;
+            margin-top: 0; /* Remove any top margin */
         }
 
         .bingo-btn {
             width: 100%;
-            padding: 12px;
+            padding: 10px; /* Slightly smaller padding */
             background: #ff4444;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 18px;
+            font-size: 16px; /* Slightly smaller font */
             font-weight: bold;
             cursor: pointer;
             text-transform: uppercase;
@@ -517,7 +519,7 @@
 
             <!-- Main Game Area -->
             <div class="main-content">
-                <!-- Left Side - Number Board (unchanged) -->
+                <!-- Left Side - Number Board - NARROWER BUTTONS -->
                 <div class="number-board">
                     <div class="board-header">
                         <span class="board-title">📋 CALLED NUMBERS</span>
@@ -528,7 +530,7 @@
 
                 <!-- Right Side - Current Call, Card, and Bingo Button -->
                 <div class="right-container">
-                    <!-- Current Call Section (unchanged) -->
+                    <!-- Current Call Section -->
                     <div class="current-call-section">
                         <div class="call-row">
                             <div class="call-left">
@@ -540,7 +542,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - ONLY RIGHT SIDE BUTTONS MODIFIED -->
+                    <!-- Player Card - BIGGER BUTTONS -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -549,7 +551,7 @@
                         <div class="bingo-grid" id="bingo-grid"></div>
                     </div>
 
-                    <!-- Bingo Button (unchanged) -->
+                    <!-- Bingo Button - Closer to card -->
                     <div class="bingo-section">
                         <button class="bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
