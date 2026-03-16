@@ -633,12 +633,37 @@
             }
             return card;
         }
+        
+// Render bingo card (column-wise) - FIXED VERSION
 // Render bingo card (column-wise) - FIXED VERSION
 function renderBingoCard() {
     const grid = document.getElementById('bingo-grid');
     grid.innerHTML = '';
     
     const columns = ['B', 'I', 'N', 'G', 'O'];
+    
+    // Create a column-major version of the card
+    // Your cards.json stores numbers in row-major order (row by row)
+    // We need to convert to column-major for display
+    
+    // First, create a 5x5 grid from the flat array
+    const rowMajor = [];
+    for (let row = 0; row < 5; row++) {
+        rowMajor[row] = [];
+        for (let col = 0; col < 5; col++) {
+            const index = row * 5 + col;
+            rowMajor[row][col] = currentCard[index];
+        }
+    }
+    
+    // Convert to column-major for display
+    const columnMajor = [];
+    for (let col = 0; col < 5; col++) {
+        columnMajor[col] = [];
+        for (let row = 0; row < 5; row++) {
+            columnMajor[col][row] = rowMajor[row][col];
+        }
+    }
     
     // Create 5 columns
     for (let col = 0; col < 5; col++) {
@@ -653,30 +678,19 @@ function renderBingoCard() {
         
         // Add numbers in this column (5 rows)
         for (let row = 0; row < 5; row++) {
-            // Calculate index: row * 5 + col gives column-major order
-            // This ensures numbers are arranged by column
-            const index = row * 5 + col;
-            
-            // Double-check column ranges:
-            // col 0 (B): indices 0,5,10,15,20 should be 1-15
-            // col 1 (I): indices 1,6,11,16,21 should be 16-30
-            // col 2 (N): indices 2,7,12,17,22 should be 31-45
-            // col 3 (G): indices 3,8,13,18,23 should be 46-60
-            // col 4 (O): indices 4,9,14,19,24 should be 61-75
+            const num = columnMajor[col][row];
             
             const cell = document.createElement('div');
             cell.className = 'player-cell';
             
-            // Check if this is the FREE space (center - index 12)
-            if (index === 12) {
+            // Check if this is the FREE space (center - should be at col=2, row=2)
+            if (col === 2 && row === 2) {
                 cell.textContent = '⭐';
                 cell.classList.add('free');
                 if (markedNumbers.has('FREE')) {
                     cell.classList.add('marked');
                 }
             } else {
-                // Get the number from the card at this index
-                const num = currentCard[index];
                 cell.textContent = num;
                 
                 // Check if this number is already marked
@@ -693,8 +707,9 @@ function renderBingoCard() {
         
         grid.appendChild(columnDiv);
     }
+    
+    console.log('Card rendered in columns:', columnMajor);
 }
-
         // Mark a number
         function markNumber(num) {
             if (!calledNumbers.includes(num)) {
