@@ -335,7 +335,7 @@
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
-            padding: 6px; /* Reduced padding */
+            padding: 6px;
             border: 1px solid #e0e0e0;
             display: flex;
             flex-direction: column;
@@ -347,7 +347,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 4px; /* Reduced margin */
+            margin-bottom: 4px;
             padding: 0 2px;
             flex-shrink: 0;
         }
@@ -373,7 +373,7 @@
             gap: 4px;
             flex: 1;
             min-height: 0;
-            margin-bottom: 2px; /* Minimal space before button */
+            margin-bottom: 2px;
         }
 
         .player-column {
@@ -400,7 +400,7 @@
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
             height: auto;
             min-height: 0;
-            max-height: 78px; /* INCREASED from 65px */
+            max-height: 78px;
         }
 
         .player-cell.header {
@@ -413,7 +413,7 @@
             flex-shrink: 0;
             aspect-ratio: 1/1;
             box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-            max-height: 68px; /* INCREASED from 65px */
+            max-height: 68px;
         }
 
         .player-cell.marked {
@@ -435,11 +435,11 @@
             color: white !important;
         }
 
-        /* Bingo Button - EXTREMELY CLOSE to buttons */
+        /* Bingo Button */
         .card-bingo-btn {
             width: 100%;
-            margin-top: 0; /* No margin at all */
-            padding: 6px; /* Slightly smaller padding */
+            margin-top: 0;
+            padding: 6px;
             background: #ff4444;
             color: white;
             border: none;
@@ -540,7 +540,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card - WITH BINGO BUTTON EXTREMELY CLOSE -->
+                    <!-- Player Card -->
                     <div class="player-card">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -548,7 +548,7 @@
                         </div>
                         <div class="bingo-grid" id="bingo-grid"></div>
                         
-                        <!-- BINGO BUTTON - NO SPACE BETWEEN GRID AND BUTTON -->
+                        <!-- BINGO BUTTON -->
                         <button class="card-bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
                 </div>
@@ -619,97 +619,97 @@
             document.getElementById('called-count').textContent = `${calledNumbers.length}/75`;
         }
 
-        // Generate demo card
+        // Generate demo card (for testing without server)
         function generateDemoCard(cardNum) {
-            const card = [];
+            // This generates a valid card with proper column ranges
+            const card = new Array(25).fill(0);
+            
+            // For each column, generate 5 unique numbers
             for (let col = 0; col < 5; col++) {
-                const start = col * 15 + 1;
-                const nums = [];
-                while (nums.length < 5) {
-                    const num = Math.floor(Math.random() * 15) + start;
-                    if (!nums.includes(num)) nums.push(num);
+                const min = col * 15 + 1;
+                const max = min + 14;
+                const numbers = [];
+                
+                while (numbers.length < 5) {
+                    const num = Math.floor(Math.random() * 15) + min;
+                    if (!numbers.includes(num)) {
+                        numbers.push(num);
+                    }
                 }
-                card.push(...nums);
+                
+                // Sort and place in rows (row-major order)
+                numbers.sort((a, b) => a - b);
+                for (let row = 0; row < 5; row++) {
+                    const index = row * 5 + col; // row-major index
+                    card[index] = numbers[row];
+                }
             }
+            
             return card;
         }
-        
-// Render bingo card (column-wise) - FIXED VERSION
-// Render bingo card (column-wise) - FIXED VERSION
-function renderBingoCard() {
-    const grid = document.getElementById('bingo-grid');
-    grid.innerHTML = '';
-    
-    const columns = ['B', 'I', 'N', 'G', 'O'];
-    
-    // Create a column-major version of the card
-    // Your cards.json stores numbers in row-major order (row by row)
-    // We need to convert to column-major for display
-    
-    // First, create a 5x5 grid from the flat array
-    const rowMajor = [];
-    for (let row = 0; row < 5; row++) {
-        rowMajor[row] = [];
-        for (let col = 0; col < 5; col++) {
-            const index = row * 5 + col;
-            rowMajor[row][col] = currentCard[index];
-        }
-    }
-    
-    // Convert to column-major for display
-    const columnMajor = [];
-    for (let col = 0; col < 5; col++) {
-        columnMajor[col] = [];
-        for (let row = 0; row < 5; row++) {
-            columnMajor[col][row] = rowMajor[row][col];
-        }
-    }
-    
-    // Create 5 columns
-    for (let col = 0; col < 5; col++) {
-        const columnDiv = document.createElement('div');
-        columnDiv.className = 'player-column';
-        
-        // Add column header
-        const header = document.createElement('div');
-        header.className = 'player-cell header';
-        header.textContent = columns[col];
-        columnDiv.appendChild(header);
-        
-        // Add numbers in this column (5 rows)
-        for (let row = 0; row < 5; row++) {
-            const num = columnMajor[col][row];
+
+        // Render bingo card in COLUMN-MAJOR order (correct for bingo)
+        function renderBingoCard() {
+            const grid = document.getElementById('bingo-grid');
+            grid.innerHTML = '';
             
-            const cell = document.createElement('div');
-            cell.className = 'player-cell';
+            const columns = ['B', 'I', 'N', 'G', 'O'];
             
-            // Check if this is the FREE space (center - should be at col=2, row=2)
-            if (col === 2 && row === 2) {
-                cell.textContent = '⭐';
-                cell.classList.add('free');
-                if (markedNumbers.has('FREE')) {
-                    cell.classList.add('marked');
-                }
-            } else {
-                cell.textContent = num;
+            // currentCard is stored in row-major order from the server
+            // We need to display it in column-major order
+            
+            // Create 5 columns
+            for (let col = 0; col < 5; col++) {
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'player-column';
                 
-                // Check if this number is already marked
-                if (markedNumbers.has(num)) {
-                    cell.classList.add('marked');
+                // Add column header
+                const header = document.createElement('div');
+                header.className = 'player-cell header';
+                header.textContent = columns[col];
+                columnDiv.appendChild(header);
+                
+                // Add numbers in this column (5 rows)
+                for (let row = 0; row < 5; row++) {
+                    // For column-major display, we need to access the element at [row][col]
+                    // But our array is flat row-major: index = row * 5 + col
+                    const index = row * 5 + col;
+                    
+                    // Get the number from currentCard (which is row-major)
+                    const num = currentCard[index];
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'player-cell';
+                    
+                    // Check if this is the FREE space (center - should be at col=2, row=2)
+                    // In row-major, index 12 is the center (2*5 + 2 = 12)
+                    if (index === 12) {
+                        cell.textContent = '⭐';
+                        cell.classList.add('free');
+                        if (markedNumbers.has('FREE')) {
+                            cell.classList.add('marked');
+                        }
+                    } else {
+                        cell.textContent = num;
+                        
+                        // Check if this number is already marked
+                        if (markedNumbers.has(num)) {
+                            cell.classList.add('marked');
+                        }
+                        
+                        // Add click handler for manual marking
+                        cell.onclick = () => markNumber(num);
+                    }
+                    
+                    columnDiv.appendChild(cell);
                 }
                 
-                // Add click handler for manual marking
-                cell.onclick = () => markNumber(num);
+                grid.appendChild(columnDiv);
             }
             
-            columnDiv.appendChild(cell);
+            console.log('Card rendered. Current card (row-major):', currentCard);
         }
-        
-        grid.appendChild(columnDiv);
-    }
-    
-    console.log('Card rendered in columns:', columnMajor);
-}
+
         // Mark a number
         function markNumber(num) {
             if (!calledNumbers.includes(num)) {
@@ -722,12 +722,13 @@ function renderBingoCard() {
             renderBingoCard();
             
             if (checkForBingo()) {
-                // Just visual feedback, no status text anymore
+                // Just visual feedback
             }
         }
 
         // Check for bingo
         function checkForBingo() {
+            // Check rows (in column-major display, but we check the underlying data)
             for (let row = 0; row < 5; row++) {
                 let win = true;
                 for (let col = 0; col < 5; col++) {
@@ -741,6 +742,7 @@ function renderBingoCard() {
                 if (win) return true;
             }
             
+            // Check columns
             for (let col = 0; col < 5; col++) {
                 let win = true;
                 for (let row = 0; row < 5; row++) {
@@ -837,6 +839,7 @@ function renderBingoCard() {
                     if (response.ok) {
                         const result = await response.json();
                         if (result.success) {
+                            // The card comes from the server in row-major order (from cards.json)
                             cardData = result.game_state.card;
                         }
                     }
@@ -851,6 +854,7 @@ function renderBingoCard() {
                 document.getElementById('selectionScreen').style.display = 'none';
                 document.getElementById('gameScreen').classList.remove('hidden');
                 
+                // Store the card data AS IS (row-major from server)
                 currentCard = cardData;
                 cardNumber = cardNum;
                 
