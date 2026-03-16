@@ -633,51 +633,67 @@
             }
             return card;
         }
-
-        // Render bingo card (column-wise)
-        function renderBingoCard() {
-            const grid = document.getElementById('bingo-grid');
-            grid.innerHTML = '';
+// Render bingo card (column-wise) - FIXED VERSION
+function renderBingoCard() {
+    const grid = document.getElementById('bingo-grid');
+    grid.innerHTML = '';
+    
+    const columns = ['B', 'I', 'N', 'G', 'O'];
+    
+    // Create 5 columns
+    for (let col = 0; col < 5; col++) {
+        const columnDiv = document.createElement('div');
+        columnDiv.className = 'player-column';
+        
+        // Add column header
+        const header = document.createElement('div');
+        header.className = 'player-cell header';
+        header.textContent = columns[col];
+        columnDiv.appendChild(header);
+        
+        // Add numbers in this column (5 rows)
+        for (let row = 0; row < 5; row++) {
+            // Calculate index: row * 5 + col gives column-major order
+            // This ensures numbers are arranged by column
+            const index = row * 5 + col;
             
-            const columns = ['B', 'I', 'N', 'G', 'O'];
+            // Double-check column ranges:
+            // col 0 (B): indices 0,5,10,15,20 should be 1-15
+            // col 1 (I): indices 1,6,11,16,21 should be 16-30
+            // col 2 (N): indices 2,7,12,17,22 should be 31-45
+            // col 3 (G): indices 3,8,13,18,23 should be 46-60
+            // col 4 (O): indices 4,9,14,19,24 should be 61-75
             
-            for (let col = 0; col < 5; col++) {
-                const columnDiv = document.createElement('div');
-                columnDiv.className = 'player-column';
+            const cell = document.createElement('div');
+            cell.className = 'player-cell';
+            
+            // Check if this is the FREE space (center - index 12)
+            if (index === 12) {
+                cell.textContent = '⭐';
+                cell.classList.add('free');
+                if (markedNumbers.has('FREE')) {
+                    cell.classList.add('marked');
+                }
+            } else {
+                // Get the number from the card at this index
+                const num = currentCard[index];
+                cell.textContent = num;
                 
-                const header = document.createElement('div');
-                header.className = 'player-cell header';
-                header.textContent = columns[col];
-                columnDiv.appendChild(header);
-                
-                for (let row = 0; row < 5; row++) {
-                    const index = row * 5 + col;
-                    const cell = document.createElement('div');
-                    cell.className = 'player-cell';
-                    
-                    if (index === 12) {
-                        cell.textContent = '⭐';
-                        cell.classList.add('free');
-                        if (markedNumbers.has('FREE')) {
-                            cell.classList.add('marked');
-                        }
-                    } else {
-                        const num = currentCard[index];
-                        cell.textContent = num;
-                        
-                        if (markedNumbers.has(num)) {
-                            cell.classList.add('marked');
-                        }
-                        
-                        cell.onclick = () => markNumber(num);
-                    }
-                    
-                    columnDiv.appendChild(cell);
+                // Check if this number is already marked
+                if (markedNumbers.has(num)) {
+                    cell.classList.add('marked');
                 }
                 
-                grid.appendChild(columnDiv);
+                // Add click handler for manual marking
+                cell.onclick = () => markNumber(num);
             }
+            
+            columnDiv.appendChild(cell);
         }
+        
+        grid.appendChild(columnDiv);
+    }
+}
 
         // Mark a number
         function markNumber(num) {
