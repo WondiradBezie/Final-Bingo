@@ -203,6 +203,31 @@ Need more help? Contact @admin
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
+
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /admin command - Get admin panel link"""
+    user_id = str(update.effective_user.id)
+    
+    # Check if user is admin
+    if user_id not in [str(uid) for uid in ADMIN_IDS]:
+        await update.message.reply_text("❌ You are not authorized to access the admin panel.")
+        return
+    
+    # Create a special button that opens admin panel
+    keyboard = [[InlineKeyboardButton("🔐 Open Admin Panel", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/admin_login.html"))]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "🔐 **Admin Panel Access**\n\n"
+        "Click the button below to open the admin panel:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+# Add this to your startup_event where you register handlers:
+# bot_app.add_handler(CommandHandler("admin", admin_command))
+
+
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /play command - Direct link to game"""
     keyboard = [[InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
