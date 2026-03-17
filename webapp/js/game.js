@@ -120,7 +120,7 @@ class BingoGame {
         // Add numbers (5x5 grid)
         for (let row = 0; row < 5; row++) {
             for (let col = 0; col < 5; col++) {
-                const index = col * 5 + row;
+                const index = row * 5 + col;
                 const number = this.state.card[index];
                 
                 const cell = document.createElement('div');
