@@ -102,9 +102,8 @@ async def startup_event():
         bot_app.add_handler(CommandHandler("rules", rules_command))
         bot_app.add_handler(CommandHandler("leaderboard", leaderboard_command))
         bot_app.add_handler(CommandHandler("admin", admin_command))
-        
-        # ADDED: id command handler
         bot_app.add_handler(CommandHandler("id", id_command))
+        bot_app.add_handler(CommandHandler("register", register_command))
         
         # Add callback query handler for inline buttons
         bot_app.add_handler(CallbackQueryHandler(button_callback))
@@ -124,25 +123,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
     
-    # Check if user exists in database, if not register them
+    # Check if user exists in database, if not show register option
     if user_id not in users_db:
-        users_db[user_id] = {
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "balance": 0,
-            "registered_at": datetime.now().isoformat(),
-            "games_played": 0,
-            "wins": 0,
-            "total_deposits": 0,
-            "total_withdrawals": 0,
-            "is_banned": False,
-            "is_vip": False
-        }
-        welcome_msg = f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n✅ You have been successfully registered!\n💰 Your starting balance: 0 Birr"
-    else:
-        welcome_msg = f"🎉 Welcome back to Joy Bingo, {user.first_name}!"
+        # Create register keyboard
+        keyboard = [
+            [InlineKeyboardButton("📝 REGISTER NOW", callback_data="register")],
+            [InlineKeyboardButton("❓ What is Joy Bingo?", callback_data="about")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n"
+            f"You are not registered yet. Click the button below to create your account and start playing!",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
     
+    # If already registered, show main menu
     logger.info(f"User {user.id} (@{user.username}) started the bot")
     
     # Create main menu keyboard with multiple buttons
@@ -163,9 +161,102 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = users_db[user_id]["balance"]
     
     await update.message.reply_text(
-        f"{welcome_msg}\n\n"
+        f"🎉 Welcome back to Joy Bingo, {user.first_name}!\n\n"
         f"💰 Your current balance: **{balance} Birr**\n"
         f"🎮 Choose an option below:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /register command - Register new user"""
+    user = update.effective_user
+    user_id = str(user.id)
+    
+    # Check if already registered
+    if user_id in users_db:
+        await update.message.reply_text(
+            "✅ You are already registered! Use /start to access the main menu.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Register the user
+    users_db[user_id] = {
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "balance": 0,
+        "registered_at": datetime.now().isoformat(),
+        "games_played": 0,
+        "wins": 0,
+        "total_deposits": 0,
+        "total_withdrawals": 0,
+        "is_banned": False,
+        "is_vip": False
+    }
+    
+    # Create main menu keyboard
+    keyboard = [
+        [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+        [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
+         InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
+        [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
+         InlineKeyboardButton("👤 My Profile", callback_data="profile")],
+        [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
+         InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+        [InlineKeyboardButton("❓ Help", callback_data="help"),
+         InlineKeyboardButton("📞 Contact Support", callback_data="support")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"✅ **Registration Successful!**\n\n"
+        f"Welcome to Joy Bingo, {user.first_name}!\n"
+        f"💰 Your starting balance: **0 Birr**\n\n"
+        f"🎮 You can now play bingo and enjoy all features!",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle about command - Show info about Joy Bingo"""
+    about_text = """
+🎮 **About Joy Bingo**
+═══════════════════
+
+**What is Joy Bingo?**
+Joy Bingo is a fun and exciting Telegram-based bingo game where you can play with friends and win real prizes!
+
+**Features:**
+• 🎯 Play classic bingo with 400 unique cards
+• 💰 Deposit and withdraw funds
+• 👤 View your profile and statistics
+• 🏆 Compete on the leaderboard
+• 🎮 Easy-to-use WebApp interface
+
+**How to Play:**
+1. Register for free
+2. Deposit funds to buy cards
+3. Select a card and start playing
+4. Mark numbers as they're called
+5. Get BINGO to win!
+
+**Fair Play:**
+• All games are verified
+• Random number generation is fair
+• 80% of pot goes to winners
+• 20% platform fee
+
+Ready to play? Click the Register button below!
+"""
+    
+    keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        about_text,
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
@@ -178,6 +269,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 **📋 AVAILABLE COMMANDS:**
 • `/start` - Main menu
+• `/register` - Register new account
 • `/play` - Play bingo
 • `/balance` - Check your balance
 • `/deposit` - Add funds
@@ -188,11 +280,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/help` - This help menu
 
 **🎯 HOW TO PLAY:**
-1. Click "PLAY BINGO" button
-2. Select a card (1-400)
-3. Numbers are called every 3 seconds
-4. Click numbers on your card to mark them
-5. Get BINGO to win!
+1. Register with /register
+2. Click "PLAY BINGO" button
+3. Select a card (1-400)
+4. Numbers are called every 3 seconds
+5. Click numbers on your card to mark them
+6. Get BINGO to win!
 
 **💰 DEPOSIT & WITHDRAW:**
 • Minimum deposit: 10 Birr
@@ -228,7 +321,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# ADDED: id command function
 async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /id command - Show user their Telegram ID"""
     user = update.effective_user
@@ -244,6 +336,19 @@ async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /play command - Direct link to game"""
+    user_id = str(update.effective_user.id)
+    
+    # Check if user is registered
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register First", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
+    
     keyboard = [[InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -256,6 +361,18 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /balance command - Check balance"""
     user_id = str(update.effective_user.id)
     
+    # Check if user is registered
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
+    
+    # Ensure user has all fields
     if user_id not in users_db:
         users_db[user_id] = {
             "username": update.effective_user.username,
@@ -292,6 +409,19 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /deposit command - Deposit funds"""
+    user_id = str(update.effective_user.id)
+    
+    # Check if user is registered
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
+    
     keyboard = [
         [InlineKeyboardButton("💳 10 Birr", callback_data="deposit_10"),
          InlineKeyboardButton("💳 50 Birr", callback_data="deposit_50")],
@@ -315,6 +445,18 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /withdraw command - Withdraw funds"""
     user_id = str(update.effective_user.id)
+    
+    # Check if user is registered
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
+    
     balance = users_db.get(user_id, {}).get("balance", 0)
     
     keyboard = [
@@ -337,6 +479,17 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /profile command - View user profile"""
     user = update.effective_user
     user_id = str(user.id)
+    
+    # Check if user is registered
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
     
     if user_id not in users_db:
         users_db[user_id] = {
@@ -471,11 +624,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = query.data
     
-    # Ensure user exists
-    if user_id not in users_db:
+    # Handle register callback
+    if data == "register":
+        user = update.effective_user
+        
+        # Check if already registered
+        if user_id in users_db:
+            await query.edit_message_text(
+                "✅ You are already registered! Use /start to access the main menu.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Register the user
         users_db[user_id] = {
-            "username": update.effective_user.username,
-            "first_name": update.effective_user.first_name,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
             "balance": 0,
             "registered_at": datetime.now().isoformat(),
             "games_played": 0,
@@ -485,6 +650,83 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "is_banned": False,
             "is_vip": False
         }
+        
+        # Create main menu keyboard
+        keyboard = [
+            [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
+            [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
+             InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
+            [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
+             InlineKeyboardButton("👤 My Profile", callback_data="profile")],
+            [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
+             InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+            [InlineKeyboardButton("❓ Help", callback_data="help"),
+             InlineKeyboardButton("📞 Contact Support", callback_data="support")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"✅ **Registration Successful!**\n\n"
+            f"Welcome to Joy Bingo, {user.first_name}!\n"
+            f"💰 Your starting balance: **0 Birr**\n\n"
+            f"🎮 You can now play bingo and enjoy all features!",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    if data == "about":
+        about_text = """
+🎮 **About Joy Bingo**
+═══════════════════
+
+**What is Joy Bingo?**
+Joy Bingo is a fun and exciting Telegram-based bingo game where you can play with friends and win real prizes!
+
+**Features:**
+• 🎯 Play classic bingo with 400 unique cards
+• 💰 Deposit and withdraw funds
+• 👤 View your profile and statistics
+• 🏆 Compete on the leaderboard
+• 🎮 Easy-to-use WebApp interface
+
+**How to Play:**
+1. Register for free
+2. Deposit funds to buy cards
+3. Select a card and start playing
+4. Mark numbers as they're called
+5. Get BINGO to win!
+
+**Fair Play:**
+• All games are verified
+• Random number generation is fair
+• 80% of pot goes to winners
+• 20% platform fee
+
+Ready to play? Click the Register button below!
+"""
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            about_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Ensure user exists for other callbacks
+    if user_id not in users_db:
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
     
     if data == "balance":
         balance = users_db[user_id]["balance"]
@@ -754,6 +996,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages (for deposits/withdrawals)"""
     user_id = str(update.effective_user.id)
     text = update.message.text.strip()
+    
+    # Check if user is registered for any action
+    if user_id not in users_db and not (context.user_data.get('awaiting_deposit') or context.user_data.get('awaiting_withdraw')):
+        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ You need to register first!\n\n"
+            "Click the button below to register:",
+            reply_markup=reply_markup
+        )
+        return
     
     # Check if we're awaiting a deposit amount
     if context.user_data.get('awaiting_deposit'):
