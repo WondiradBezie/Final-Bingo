@@ -1,5 +1,22 @@
 // Admin Dashboard JavaScript
 
+// Check if we're in Telegram WebApp
+const isTelegram = !!window.Telegram?.WebApp;
+
+// Override fetch to handle auth better
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    // Add auth header if we have token
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+        options.headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`
+        };
+    }
+    return originalFetch(url, options);
+};
+
 // State Management
 let currentPage = 'dashboard';
 let charts = {};
@@ -15,6 +32,7 @@ function getAuthToken() {
 function checkAuth() {
     const token = getAuthToken();
     if (!token) {
+        // If not in Telegram, redirect to login
         window.location.href = '/webapp/admin_login.html';
         return false;
     }
