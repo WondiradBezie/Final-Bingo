@@ -640,5 +640,18 @@
     </div>
 
     <script src="/webapp/js/admin.js"></script>
+    <!-- Add this before the closing </body> tag -->
+    <script>
+        // Override to handle browser access
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if we're in Telegram WebApp
+            const tg = window.Telegram?.WebApp;
+            
+            // If not in Telegram and no token, redirect to login
+            if (!tg && !localStorage.getItem('adminToken')) {
+                window.location.href = '/webapp/admin_login.html';
+            }
+        });
+    </script>
 </body>
 </html>
