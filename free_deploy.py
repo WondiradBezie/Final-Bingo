@@ -101,6 +101,10 @@ async def startup_event():
         bot_app.add_handler(CommandHandler("profile", profile_command))
         bot_app.add_handler(CommandHandler("rules", rules_command))
         bot_app.add_handler(CommandHandler("leaderboard", leaderboard_command))
+        bot_app.add_handler(CommandHandler("admin", admin_command))
+        
+        # ADDED: id command handler
+        bot_app.add_handler(CommandHandler("id", id_command))
         
         # Add callback query handler for inline buttons
         bot_app.add_handler(CallbackQueryHandler(button_callback))
@@ -224,9 +228,19 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# Add this to your startup_event where you register handlers:
-# bot_app.add_handler(CommandHandler("admin", admin_command))
-
+# ADDED: id command function
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /id command - Show user their Telegram ID"""
+    user = update.effective_user
+    user_id = user.id
+    await update.message.reply_text(
+        f"👤 **Your Telegram Information**\n\n"
+        f"🆔 User ID: `{user_id}`\n"
+        f"📝 First Name: {user.first_name}\n"
+        f"🔤 Username: @{user.username if user.username else 'N/A'}\n\n"
+        f"Copy your ID for manual admin login.",
+        parse_mode='Markdown'
+    )
 
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /play command - Direct link to game"""
