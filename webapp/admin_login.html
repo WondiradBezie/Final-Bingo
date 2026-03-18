@@ -27,7 +27,7 @@
             border-radius: 20px;
             padding: 40px;
             width: 100%;
-            max-width: 400px;
+            max-width: 450px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.2);
         }
 
@@ -45,6 +45,31 @@
         .logo p {
             color: #666;
             font-size: 14px;
+        }
+
+        .access-method {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            background: #f0f0f0;
+            padding: 5px;
+            border-radius: 10px;
+        }
+
+        .method-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .method-btn.active {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .form-group {
@@ -157,10 +182,30 @@
             background: #fff3cd;
             border: 1px solid #ffeeba;
             color: #856404;
-            padding: 10px;
+            padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .info-text {
+            text-align: center;
+            margin: 15px 0;
+            color: #666;
             font-size: 13px;
+        }
+
+        .manual-login {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .manual-login h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 15px;
             text-align: center;
         }
     </style>
@@ -172,37 +217,87 @@
             <p>Admin Panel Login</p>
         </div>
 
-        <div id="telegramUser" class="user-info hidden">
-            <div class="user-avatar" id="userAvatar"></div>
-            <div class="user-details">
-                <div class="user-name" id="userName"></div>
-                <div class="user-id" id="userId"></div>
-            </div>
+        <div class="access-method">
+            <button class="method-btn active" onclick="switchMethod('telegram')" id="telegramMethodBtn">Telegram</button>
+            <button class="method-btn" onclick="switchMethod('manual')" id="manualMethodBtn">Manual</button>
         </div>
 
-        <div id="noTelegramWarning" class="warning hidden">
-            ⚠️ You must open this page from Telegram WebApp
+        <!-- Telegram Login Section -->
+        <div id="telegramSection">
+            <div id="telegramUser" class="user-info hidden">
+                <div class="user-avatar" id="userAvatar"></div>
+                <div class="user-details">
+                    <div class="user-name" id="userName"></div>
+                    <div class="user-id" id="userId"></div>
+                </div>
+            </div>
+
+            <div id="noTelegramWarning" class="warning hidden">
+                ⚠️ You must open this page from Telegram WebApp
+                <br><br>
+                <small>Send /admin to the bot and click the button that appears.</small>
+            </div>
+
+            <form id="telegramLoginForm">
+                <div class="form-group">
+                    <label>Admin Password</label>
+                    <input type="password" id="telegramPassword" placeholder="Enter admin password" required>
+                </div>
+                <button type="submit" id="telegramLoginBtn">Login via Telegram</button>
+            </form>
         </div>
 
-        <form id="loginForm">
-            <div class="form-group">
-                <label>Admin Password</label>
-                <input type="password" id="password" placeholder="Enter admin password" required>
+        <!-- Manual Login Section (Hidden by default) -->
+        <div id="manualSection" class="hidden">
+            <div class="info-text">
+                Enter your admin credentials to access the dashboard
             </div>
-            <button type="submit" id="loginBtn">Login to Admin Panel</button>
-        </form>
+
+            <form id="manualLoginForm">
+                <div class="form-group">
+                    <label>Admin ID</label>
+                    <input type="text" id="manualUserId" placeholder="Enter your Telegram ID" required>
+                </div>
+                <div class="form-group">
+                    <label>Admin Password</label>
+                    <input type="password" id="manualPassword" placeholder="Enter admin password" required>
+                </div>
+                <button type="submit" id="manualLoginBtn">Login Manually</button>
+            </form>
+
+            <div class="info-text">
+                <small>Don't know your Telegram ID? Send /id to the bot.</small>
+            </div>
+        </div>
 
         <div id="message" class="error"></div>
     </div>
 
     <script>
         const tg = window.Telegram?.WebApp;
-        
+        let currentMethod = 'telegram';
+
+        function switchMethod(method) {
+            currentMethod = method;
+            
+            // Update buttons
+            document.getElementById('telegramMethodBtn').classList.toggle('active', method === 'telegram');
+            document.getElementById('manualMethodBtn').classList.toggle('active', method === 'manual');
+            
+            // Show/hide sections
+            document.getElementById('telegramSection').classList.toggle('hidden', method !== 'telegram');
+            document.getElementById('manualSection').classList.toggle('hidden', method !== 'manual');
+            
+            // Clear messages
+            document.getElementById('message').textContent = '';
+            document.getElementById('message').className = 'error';
+        }
+
+        // Initialize Telegram if available
         if (tg) {
             tg.expand();
             tg.ready();
             
-            // Get Telegram user info
             const user = tg.initDataUnsafe?.user;
             
             if (user) {
@@ -212,25 +307,26 @@
                 document.getElementById('userAvatar').textContent = user.first_name.charAt(0).toUpperCase();
                 
                 // Store user ID for login
-                document.getElementById('loginForm').dataset.userId = user.id;
+                document.getElementById('telegramLoginForm').dataset.userId = user.id;
             } else {
                 document.getElementById('noTelegramWarning').classList.remove('hidden');
-                document.getElementById('noTelegramWarning').textContent = '⚠️ Could not get Telegram user info. Make sure you opened this from Telegram.';
             }
         } else {
-            document.getElementById('noTelegramWarning').classList.remove('hidden');
+            // If not in Telegram, default to manual mode
+            switchMethod('manual');
         }
 
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        // Telegram Login
+        document.getElementById('telegramLoginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const password = document.getElementById('password').value;
+            const password = document.getElementById('telegramPassword').value;
             const user = tg?.initDataUnsafe?.user;
-            const loginBtn = document.getElementById('loginBtn');
+            const loginBtn = document.getElementById('telegramLoginBtn');
             const messageDiv = document.getElementById('message');
             
             if (!user) {
-                messageDiv.textContent = 'Telegram user not found';
+                messageDiv.textContent = 'Telegram user not found. Try manual login.';
                 return;
             }
             
@@ -261,12 +357,62 @@
                 } else {
                     messageDiv.textContent = data.error || 'Login failed';
                     loginBtn.disabled = false;
-                    loginBtn.textContent = 'Login to Admin Panel';
+                    loginBtn.textContent = 'Login via Telegram';
                 }
             } catch (error) {
                 messageDiv.textContent = 'Connection error';
                 loginBtn.disabled = false;
-                loginBtn.textContent = 'Login to Admin Panel';
+                loginBtn.textContent = 'Login via Telegram';
+            }
+        });
+
+        // Manual Login
+        document.getElementById('manualLoginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const userId = document.getElementById('manualUserId').value.trim();
+            const password = document.getElementById('manualPassword').value;
+            const loginBtn = document.getElementById('manualLoginBtn');
+            const messageDiv = document.getElementById('message');
+            
+            if (!userId || !password) {
+                messageDiv.textContent = 'Please enter both User ID and Password';
+                return;
+            }
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            messageDiv.textContent = '';
+            messageDiv.className = 'error';
+            
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: password,
+                        user_id: parseInt(userId)
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('adminToken', data.token);
+                    messageDiv.className = 'success';
+                    messageDiv.textContent = 'Login successful! Redirecting...';
+                    setTimeout(() => {
+                        window.location.href = '/webapp/admin.html';
+                    }, 1500);
+                } else {
+                    messageDiv.textContent = data.error || 'Login failed';
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login Manually';
+                }
+            } catch (error) {
+                messageDiv.textContent = 'Connection error';
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login Manually';
             }
         });
 
