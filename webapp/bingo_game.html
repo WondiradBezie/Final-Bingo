@@ -108,6 +108,64 @@
             opacity: 0.9;
         }
 
+        /* Timer Display */
+        .timer-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .timer-label {
+            font-size: 12px;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+
+        .timer-circle {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 20px;
+            color: #ff4444;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            animation: pulse 1s infinite;
+        }
+
+        .timer-circle.warning {
+            color: #ff8800;
+            animation: pulse-warning 0.8s infinite;
+        }
+
+        .timer-circle.critical {
+            color: #ff0000;
+            animation: pulse-critical 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); box-shadow: 0 4px 12px rgba(255,68,68,0.3); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes pulse-warning {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.08); box-shadow: 0 4px 15px rgba(255,136,0,0.4); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes pulse-critical {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.12); box-shadow: 0 6px 20px rgba(255,0,0,0.5); }
+            100% { transform: scale(1); }
+        }
+
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
@@ -482,6 +540,11 @@
         <div id="selectionScreen" class="selection-screen">
             <div class="selection-header">
                 <span class="selection-title">🎮 Joy Bingo</span>
+                <!-- Timer Display in Center -->
+                <div class="timer-container">
+                    <span class="timer-label">Starts in</span>
+                    <div class="timer-circle" id="selectionTimer">20</div>
+                </div>
                 <span class="selection-subtitle">Select Card (1-400)</span>
             </div>
             <div class="loading" id="loadingCards">Loading available cards...</div>
@@ -572,10 +635,15 @@
         let takenCards = [];
         let calledNumbers = [];
         let markedNumbers = new Set(['FREE']);
-        let gameActive = true;
+        let gameActive = false;  // Start as false, will be true after timer
         let currentCard = [];
         let cardNumber = null;
         let callCount = 0;
+        
+        // Timer variables
+        let selectionTimer = 20;
+        let timerInterval = null;
+        let gameStarted = false;
 
         // Initialize number board (column-wise)
         function initNumberBoard() {
@@ -617,6 +685,61 @@
             }
             
             document.getElementById('called-count').textContent = `${calledNumbers.length}/75`;
+        }
+
+        // Start selection timer
+        function startSelectionTimer() {
+            selectionTimer = 20;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                selectionTimer--;
+                updateTimerDisplay();
+                
+                if (selectionTimer <= 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    startGameAfterTimer();
+                }
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() {
+            const timerElement = document.getElementById('selectionTimer');
+            if (timerElement) {
+                timerElement.textContent = selectionTimer;
+                
+                // Change color based on time remaining
+                if (selectionTimer <= 5) {
+                    timerElement.className = 'timer-circle critical';
+                } else if (selectionTimer <= 10) {
+                    timerElement.className = 'timer-circle warning';
+                } else {
+                    timerElement.className = 'timer-circle';
+                }
+            }
+        }
+        
+        function startGameAfterTimer() {
+            if (!gameStarted) {
+                gameStarted = true;
+                gameActive = true;
+                
+                // Hide selection screen, show game screen if card is selected
+                if (selectedCard) {
+                    document.getElementById('selectionScreen').style.display = 'none';
+                    document.getElementById('gameScreen').classList.remove('hidden');
+                    
+                    // Initialize game with the selected card
+                    initNumberBoard();
+                    renderBingoCard();
+                    updateCurrentCall();
+                    startGame();
+                } else {
+                    alert('Time\'s up! Please select a card to start playing.');
+                    // You could redirect or handle this case
+                }
+            }
         }
 
         // Generate demo card (for testing without server)
@@ -712,6 +835,10 @@
 
         // Mark a number
         function markNumber(num) {
+            if (!gameActive) {
+                alert('Game not started yet! Wait for the timer to finish.');
+                return;
+            }
             if (!calledNumbers.includes(num)) {
                 alert(`Number ${num} hasn't been called yet!`);
                 return;
@@ -761,6 +888,10 @@
 
         // Call bingo - always active
         async function callBingo() {
+            if (!gameActive) {
+                alert('Game not started yet! Wait for the timer to finish.');
+                return;
+            }
             if (checkForBingo()) {
                 alert('🎉 BINGO! You win! 🎉');
             } else {
@@ -802,6 +933,10 @@
                     btn.onclick = () => selectCard(i);
                     grid.appendChild(btn);
                 }
+                
+                // Start the selection timer after cards are loaded
+                startSelectionTimer();
+                
             } catch (error) {
                 console.error('Error loading cards:', error);
             }
@@ -816,7 +951,9 @@
             
             selectedCard = cardNum;
             
+            // Highlight selected card
             document.querySelectorAll('.card-btn').forEach(btn => {
+                btn.classList.remove('selected');
                 if (btn.dataset.cardNum == cardNum) {
                     btn.classList.add('selected');
                 }
@@ -851,20 +988,14 @@
                     cardData = generateDemoCard(cardNum);
                 }
                 
-                document.getElementById('selectionScreen').style.display = 'none';
-                document.getElementById('gameScreen').classList.remove('hidden');
-                
                 // Store the card data AS IS (row-major from server)
                 currentCard = cardData;
                 cardNumber = cardNum;
                 
                 document.getElementById('selected-card-num').textContent = `#${cardNum}`;
                 
-                initNumberBoard();
-                renderBingoCard();
-                updateCurrentCall();
-                
-                startGame();
+                // Don't switch to game screen yet - wait for timer
+                // Just store the card and wait
                 
             } catch (error) {
                 console.error('Error selecting card:', error);
