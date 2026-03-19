@@ -41,6 +41,9 @@ ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", secrets.token_urlsafe(32))
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koyeb.app")
 
+# Starting balance for new users
+STARTING_BALANCE = 20  # 20 Birr for new registrations
+
 # Create bot application
 bot_app = None
 
@@ -134,7 +137,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             f"🎉 Welcome to Joy Bingo, {user.first_name}!\n\n"
-            f"You are not registered yet. Click the button below to create your account and start playing!",
+            f"You are not registered yet. Click the button below to create your account and get **{STARTING_BALANCE} Birr** starting bonus!",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
@@ -169,7 +172,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /register command - Register new user"""
+    """Handle /register command - Register new user with starting balance"""
     user = update.effective_user
     user_id = str(user.id)
     
@@ -181,12 +184,12 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Register the user
+    # Register the user with starting balance
     users_db[user_id] = {
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
-        "balance": 0,
+        "balance": STARTING_BALANCE,  # Give starting balance
         "registered_at": datetime.now().isoformat(),
         "games_played": 0,
         "wins": 0,
@@ -214,7 +217,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ **Registration Successful!**\n\n"
         f"Welcome to Joy Bingo, {user.first_name}!\n"
-        f"💰 Your starting balance: **0 Birr**\n\n"
+        f"💰 Your starting balance: **{STARTING_BALANCE} Birr** (Free bonus!)\n\n"
         f"🎮 You can now play bingo and enjoy all features!",
         reply_markup=reply_markup,
         parse_mode='Markdown'
@@ -222,7 +225,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle about command - Show info about Joy Bingo"""
-    about_text = """
+    about_text = f"""
 🎮 **About Joy Bingo**
 ═══════════════════
 
@@ -231,13 +234,14 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 
 **Features:**
 • 🎯 Play classic bingo with 400 unique cards
+• 💰 **Get {STARTING_BALANCE} Birr free** when you register!
 • 💰 Deposit and withdraw funds
 • 👤 View your profile and statistics
 • 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
 
 **How to Play:**
-1. Register for free
+1. Register for free (get {STARTING_BALANCE} Birr bonus)
 2. Deposit funds to buy cards
 3. Select a card and start playing
 4. Mark numbers as they're called
@@ -249,7 +253,7 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 • 80% of pot goes to winners
 • 20% platform fee
 
-Ready to play? Click the Register button below!
+Ready to play? Click the Register button below to get your free {STARTING_BALANCE} Birr!
 """
     
     keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -263,13 +267,13 @@ Ready to play? Click the Register button below!
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
-    help_text = """
+    help_text = f"""
 🎮 **JOY BINGO - HELP & COMMANDS**
 ═══════════════════════════
 
 **📋 AVAILABLE COMMANDS:**
 • `/start` - Main menu
-• `/register` - Register new account
+• `/register` - Register new account (get {STARTING_BALANCE} Birr free!)
 • `/play` - Play bingo
 • `/balance` - Check your balance
 • `/deposit` - Add funds
@@ -280,9 +284,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/help` - This help menu
 
 **🎯 HOW TO PLAY:**
-1. Register with /register
+1. Register with /register (get {STARTING_BALANCE} Birr free!)
 2. Click "PLAY BINGO" button
-3. Select a card (1-400)
+3. Select a card (costs 10 Birr)
 4. Numbers are called every 3 seconds
 5. Click numbers on your card to mark them
 6. Get BINGO to win!
@@ -344,7 +348,7 @@ async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
@@ -367,7 +371,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
@@ -417,7 +421,7 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
@@ -452,7 +456,7 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
@@ -486,7 +490,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
@@ -636,12 +640,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Register the user
+        # Register the user with starting balance
         users_db[user_id] = {
             "username": user.username,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "balance": 0,
+            "balance": STARTING_BALANCE,  # Give starting balance
             "registered_at": datetime.now().isoformat(),
             "games_played": 0,
             "wins": 0,
@@ -669,7 +673,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f"✅ **Registration Successful!**\n\n"
             f"Welcome to Joy Bingo, {user.first_name}!\n"
-            f"💰 Your starting balance: **0 Birr**\n\n"
+            f"💰 Your starting balance: **{STARTING_BALANCE} Birr** (Free bonus!)\n\n"
             f"🎮 You can now play bingo and enjoy all features!",
             reply_markup=reply_markup,
             parse_mode='Markdown'
@@ -677,7 +681,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if data == "about":
-        about_text = """
+        about_text = f"""
 🎮 **About Joy Bingo**
 ═══════════════════
 
@@ -686,13 +690,14 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 
 **Features:**
 • 🎯 Play classic bingo with 400 unique cards
+• 💰 **Get {STARTING_BALANCE} Birr free** when you register!
 • 💰 Deposit and withdraw funds
 • 👤 View your profile and statistics
 • 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
 
 **How to Play:**
-1. Register for free
+1. Register for free (get {STARTING_BALANCE} Birr bonus)
 2. Deposit funds to buy cards
 3. Select a card and start playing
 4. Mark numbers as they're called
@@ -704,7 +709,7 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 • 80% of pot goes to winners
 • 20% platform fee
 
-Ready to play? Click the Register button below!
+Ready to play? Click the Register button below to get your free {STARTING_BALANCE} Birr!
 """
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -722,7 +727,7 @@ Ready to play? Click the Register button below!
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
@@ -1003,7 +1008,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             "❌ You need to register first!\n\n"
-            "Click the button below to register:",
+            "Click the button below to register and get free 20 Birr:",
             reply_markup=reply_markup
         )
         return
