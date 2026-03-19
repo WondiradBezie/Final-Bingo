@@ -14,7 +14,7 @@ services:
       - key: SUPABASE_URL
         value: "postgresql://postgres:BirtplasWond204695%24@db.blbphrttoopytpholold.supabase.co:5432/postgres"
       - key: SUPABASE_KEY
-        value: "your_supabase_key"
+        value: "sb_publishable_x3HntYTXjhOu1aETV7-nRg_ZTQnpxkf"
     ports:
       - port: 8000
     routes:
