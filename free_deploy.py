@@ -4,6 +4,7 @@ import json
 import asyncio
 import logging
 import secrets
+import time
 from typing import Optional
 from datetime import datetime
 from typing import Dict, Set, Optional, Any
@@ -51,6 +52,11 @@ STARTING_BALANCE = 20  # 20 Birr for new registrations
 # Create bot application
 bot_app = None
 
+# Global selection timer
+selection_start_time = None
+SELECTION_DURATION = 20
+disqualified_players = set()
+
 # Load cards from cards.json
 CARDS_DATA = {}
 try:
@@ -86,6 +92,19 @@ def verify_admin_token(authorization: Optional[str] = Header(None)):
 def is_admin_user(user_id: int) -> bool:
     """Check if a Telegram user is admin"""
     return str(user_id) in [str(uid) for uid in ADMIN_IDS]
+
+def start_selection_phase():
+    """Start the global selection timer"""
+    global selection_start_time
+    selection_start_time = time.time()
+    # Clear disqualified players for new game
+    disqualified_players.clear()
+
+def selection_open():
+    """Check if selection phase is still open"""
+    if selection_start_time is None:
+        return False
+    return (time.time() - selection_start_time) < SELECTION_DURATION
 
 @app.on_event("startup")
 async def startup_event():
@@ -164,7 +183,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    balance = existing_user.balance
+    balance = existing_user.get("balance", 0) if isinstance(existing_user, dict) else existing_user.balance
     
     await update.message.reply_text(
         f"🎉 Welcome back to Joy Bingo, {user.first_name}!\n\n"
@@ -199,7 +218,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Add starting balance as deposit
         await db.update_balance(
-            user_id=new_user.id,
+            user_id=new_user.id if hasattr(new_user, 'id') else new_user.get('id'),
             amount=STARTING_BALANCE,
             transaction_type='deposit',
             description='Welcome bonus'
@@ -396,6 +415,12 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        balance = user.get("balance", 0) if isinstance(user, dict) else user.balance
+        total_deposits = user.get("total_deposits", 0) if isinstance(user, dict) else user.total_deposits
+        total_withdrawals = user.get("total_withdrawals", 0) if isinstance(user, dict) else user.total_withdrawals
+        games_played = user.get("games_played", 0) if isinstance(user, dict) else user.games_played
+        games_won = user.get("games_won", 0) if isinstance(user, dict) else user.games_won
+        
         keyboard = [
             [InlineKeyboardButton("📥 Deposit", callback_data="deposit"),
              InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
@@ -405,11 +430,11 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             f"💰 **YOUR BALANCE**\n\n"
-            f"Current Balance: **{user.balance} Birr**\n"
-            f"Total Deposits: **{user.total_deposits} Birr**\n"
-            f"Total Withdrawals: **{user.total_withdrawals} Birr**\n"
-            f"Games Played: **{user.games_played}**\n"
-            f"Wins: **{user.games_won}**",
+            f"Current Balance: **{balance} Birr**\n"
+            f"Total Deposits: **{total_deposits} Birr**\n"
+            f"Total Withdrawals: **{total_withdrawals} Birr**\n"
+            f"Games Played: **{games_played}**\n"
+            f"Wins: **{games_won}**",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
@@ -475,7 +500,7 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    balance = existing_user.balance
+    balance = existing_user.get("balance", 0) if isinstance(existing_user, dict) else existing_user.balance
     
     keyboard = [
         [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
@@ -512,27 +537,37 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     stats = existing_user
-    win_rate = (stats.games_won / stats.games_played * 100) if stats.games_played > 0 else 0
+    games_played = stats.get("games_played", 0) if isinstance(stats, dict) else stats.games_played
+    games_won = stats.get("games_won", 0) if isinstance(stats, dict) else stats.games_won
+    win_rate = (games_won / games_played * 100) if games_played > 0 else 0
+    
+    first_name = stats.get("first_name", user.first_name) if isinstance(stats, dict) else stats.first_name
+    last_name = stats.get("last_name", user.last_name) if isinstance(stats, dict) else stats.last_name
+    username = stats.get("username", user.username) if isinstance(stats, dict) else stats.username
+    balance = stats.get("balance", 0) if isinstance(stats, dict) else stats.balance
+    total_deposits = stats.get("total_deposits", 0) if isinstance(stats, dict) else stats.total_deposits
+    total_withdrawals = stats.get("total_withdrawals", 0) if isinstance(stats, dict) else stats.total_withdrawals
+    registered_at = stats.get("created_at", datetime.now().isoformat()) if isinstance(stats, dict) else stats.created_at
     
     profile_text = f"""
 👤 **USER PROFILE**
 ══════════════════
 
 **Personal Info:**
-• Name: {stats.first_name} {stats.last_name or ''}
-• Username: @{stats.username or 'N/A'}
+• Name: {first_name} {last_name or ''}
+• Username: @{username or 'N/A'}
 • User ID: `{user_id}`
-• Registered: {stats.created_at.strftime('%Y-%m-%d') if stats.created_at else 'N/A'}
+• Registered: {registered_at[:10] if registered_at else 'N/A'}
 
 **Game Statistics:**
-• Games Played: {stats.games_played}
-• Wins: {stats.games_won}
+• Games Played: {games_played}
+• Wins: {games_won}
 • Win Rate: {win_rate:.1f}%
 
 **Financial:**
-• Current Balance: {stats.balance} Birr
-• Total Deposits: {stats.total_deposits} Birr
-• Total Withdrawals: {stats.total_withdrawals} Birr
+• Current Balance: {balance} Birr
+• Total Deposits: {total_deposits} Birr
+• Total Withdrawals: {total_withdrawals} Birr
 """
     
     keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]]
@@ -659,7 +694,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Add starting balance
             await db.update_balance(
-                user_id=new_user.id,
+                user_id=new_user.id if hasattr(new_user, 'id') else new_user.get('id'),
                 amount=STARTING_BALANCE,
                 transaction_type='deposit',
                 description='Welcome bonus'
@@ -755,6 +790,12 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         return
     
     if data == "balance":
+        balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
+        total_deposits = db_user.get("total_deposits", 0) if isinstance(db_user, dict) else db_user.total_deposits
+        total_withdrawals = db_user.get("total_withdrawals", 0) if isinstance(db_user, dict) else db_user.total_withdrawals
+        games_played = db_user.get("games_played", 0) if isinstance(db_user, dict) else db_user.games_played
+        games_won = db_user.get("games_won", 0) if isinstance(db_user, dict) else db_user.games_won
+        
         keyboard = [
             [InlineKeyboardButton("📥 Deposit", callback_data="deposit"),
              InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
@@ -763,11 +804,11 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         ]
         await query.edit_message_text(
             f"💰 **YOUR BALANCE**\n\n"
-            f"Current Balance: **{db_user.balance} Birr**\n"
-            f"Total Deposits: **{db_user.total_deposits} Birr**\n"
-            f"Total Withdrawals: **{db_user.total_withdrawals} Birr**\n"
-            f"Games Played: **{db_user.games_played}**\n"
-            f"Wins: **{db_user.games_won}**",
+            f"Current Balance: **{balance} Birr**\n"
+            f"Total Deposits: **{total_deposits} Birr**\n"
+            f"Total Withdrawals: **{total_withdrawals} Birr**\n"
+            f"Games Played: **{games_played}**\n"
+            f"Wins: **{games_won}**",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
@@ -805,8 +846,9 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         else:
             try:
                 # Process deposit in database
+                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
                 await db.update_balance(
-                    user_id=db_user.id,
+                    user_id=user_id_val,
                     amount=int(amount),
                     transaction_type='deposit',
                     description=f'Deposit of {amount} Birr'
@@ -814,11 +856,12 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
                 
                 # Get updated balance
                 updated_user = await db.get_user(user_id)
+                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                 
                 await query.edit_message_text(
                     f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
                     f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{updated_user.balance} Birr**\n\n"
+                    f"New Balance: **{new_balance} Birr**\n\n"
                     f"Thank you for your deposit!",
                     parse_mode='Markdown'
                 )
@@ -830,6 +873,7 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
                 )
     
     elif data == "withdraw":
+        balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
         keyboard = [
             [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
             [InlineKeyboardButton("📋 Withdrawal History", callback_data="withdraw_history")],
@@ -837,7 +881,7 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         ]
         await query.edit_message_text(
             f"📤 **WITHDRAW FUNDS**\n\n"
-            f"Available Balance: **{db_user.balance} Birr**\n"
+            f"Available Balance: **{balance} Birr**\n"
             f"Minimum Withdrawal: **50 Birr**\n"
             f"Processing Time: **24 hours**\n\n"
             f"To request a withdrawal, click the button below:",
@@ -856,27 +900,37 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
     
     elif data == "profile":
         stats = db_user
-        win_rate = (stats.games_won / stats.games_played * 100) if stats.games_played > 0 else 0
+        games_played = stats.get("games_played", 0) if isinstance(stats, dict) else stats.games_played
+        games_won = stats.get("games_won", 0) if isinstance(stats, dict) else stats.games_won
+        win_rate = (games_won / games_played * 100) if games_played > 0 else 0
+        
+        first_name = stats.get("first_name", user.first_name) if isinstance(stats, dict) else stats.first_name
+        last_name = stats.get("last_name", user.last_name) if isinstance(stats, dict) else stats.last_name
+        username = stats.get("username", user.username) if isinstance(stats, dict) else stats.username
+        balance = stats.get("balance", 0) if isinstance(stats, dict) else stats.balance
+        total_deposits = stats.get("total_deposits", 0) if isinstance(stats, dict) else stats.total_deposits
+        total_withdrawals = stats.get("total_withdrawals", 0) if isinstance(stats, dict) else stats.total_withdrawals
+        registered_at = stats.get("created_at", datetime.now().isoformat()) if isinstance(stats, dict) else stats.created_at
         
         profile_text = f"""
 👤 **USER PROFILE**
 ══════════════════
 
 **Personal Info:**
-• Name: {stats.first_name} {stats.last_name or ''}
-• Username: @{stats.username or 'N/A'}
+• Name: {first_name} {last_name or ''}
+• Username: @{username or 'N/A'}
 • User ID: `{user_id}`
-• Registered: {stats.created_at.strftime('%Y-%m-%d') if stats.created_at else 'N/A'}
+• Registered: {registered_at[:10] if registered_at else 'N/A'}
 
 **Game Statistics:**
-• Games Played: {stats.games_played}
-• Wins: {stats.games_won}
+• Games Played: {games_played}
+• Wins: {games_won}
 • Win Rate: {win_rate:.1f}%
 
 **Financial:**
-• Current Balance: {stats.balance} Birr
-• Total Deposits: {stats.total_deposits} Birr
-• Total Withdrawals: {stats.total_withdrawals} Birr
+• Current Balance: {balance} Birr
+• Total Deposits: {total_deposits} Birr
+• Total Withdrawals: {total_withdrawals} Birr
 """
         keyboard = [[InlineKeyboardButton("◀️ Back to Menu", callback_data="back_to_menu")]]
         await query.edit_message_text(
@@ -1016,6 +1070,8 @@ Please include your User ID when contacting support.
         )
     
     elif data == "back_to_menu":
+        balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
+        
         keyboard = [
             [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
             [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
@@ -1030,7 +1086,7 @@ Please include your User ID when contacting support.
         
         await query.edit_message_text(
             f"🎉 Welcome back!\n\n"
-            f"💰 Your current balance: **{db_user.balance} Birr**\n"
+            f"💰 Your current balance: **{balance} Birr**\n"
             f"🎮 Choose an option below:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
@@ -1060,8 +1116,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             amount = int(text)
             if 10 <= amount <= 10000:
+                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
                 await db.update_balance(
-                    user_id=db_user.id,
+                    user_id=user_id_val,
                     amount=amount,
                     transaction_type='deposit',
                     description=f'Deposit of {amount} Birr'
@@ -1069,11 +1126,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Get updated balance
                 updated_user = await db.get_user(user_id)
+                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                 
                 await update.message.reply_text(
                     f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
                     f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{updated_user.balance} Birr**\n\n"
+                    f"New Balance: **{new_balance} Birr**\n\n"
                     f"Thank you for your deposit!",
                     parse_mode='Markdown'
                 )
@@ -1091,17 +1149,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get('awaiting_withdraw'):
         try:
             amount = int(text)
+            balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
+            
             if amount < 50:
                 await update.message.reply_text(
                     "❌ Minimum withdrawal amount is 50 Birr."
                 )
-            elif amount > db_user.balance:
+            elif amount > balance:
                 await update.message.reply_text(
-                    f"❌ Insufficient balance. Your balance is {db_user.balance} Birr."
+                    f"❌ Insufficient balance. Your balance is {balance} Birr."
                 )
             else:
+                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
                 await db.update_balance(
-                    user_id=db_user.id,
+                    user_id=user_id_val,
                     amount=-amount,
                     transaction_type='withdrawal',
                     description=f'Withdrawal request of {amount} Birr'
@@ -1109,11 +1170,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Get updated balance
                 updated_user = await db.get_user(user_id)
+                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                 
                 await update.message.reply_text(
                     f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
                     f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{updated_user.balance} Birr**\n"
+                    f"New Balance: **{new_balance} Birr**\n"
                     f"Processing Time: **24 hours**\n\n"
                     f"You will be notified when your withdrawal is processed.",
                     parse_mode='Markdown'
@@ -1168,6 +1230,74 @@ async def test_database():
             "status": "❌ Database connection failed",
             "error": str(e)
         }, status_code=500)
+
+# ============= NEW: Global Timer and Bingo Check Endpoints =============
+
+@app.post("/api/game/start_selection")
+async def api_start_selection():
+    """Start the selection phase for a new game"""
+    start_selection_phase()
+    return {"success": True, "message": "Selection phase started"}
+
+@app.get("/can_select")
+async def can_select():
+    """Check if players can still select cards"""
+    return {"allowed": selection_open()}
+
+@app.post("/api/game/check_bingo")
+async def check_bingo(request: Request):
+    """Check if player has valid bingo and handle disqualification"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        room_id = data.get("room_id")
+        marked = data.get("marked", [])
+        
+        # Check if player is already disqualified
+        if user_id in disqualified_players:
+            return {"status": "blocked", "message": "You are disqualified"}
+        
+        # Simple bingo validation (check if they have 5 in a row/column/diag)
+        # Remove 'FREE' from marked list for counting
+        marked_numbers = [m for m in marked if m != 'FREE']
+        marked_count = len(marked_numbers)
+        
+        # For demo, require at least 5 marked numbers for a win
+        # In production, you'd use your game engine to validate actual bingo
+        if marked_count >= 5:
+            # Valid bingo - calculate prize
+            prize = 100  # Placeholder prize amount
+            
+            # You could record win in database here if you want
+            # if user_id:
+            #     db_user = await db.get_user(user_id)
+            #     if db_user:
+            #         user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
+            #         await db.update_balance(
+            #             user_id=user_id_val,
+            #             amount=prize,
+            #             transaction_type='win',
+            #             description='Bingo win'
+            #         )
+            
+            return {
+                "status": "win", 
+                "prize": prize,
+                "message": "Congratulations! You win!"
+            }
+        else:
+            # Fake bingo - disqualify player
+            disqualified_players.add(user_id)
+            logger.warning(f"Player {user_id} disqualified for fake bingo with only {marked_count} marks")
+            
+            return {
+                "status": "disqualified",
+                "message": "Wrong BINGO! You are disqualified for this game."
+            }
+            
+    except Exception as e:
+        logger.error(f"Bingo check error: {e}")
+        return {"status": "error", "message": str(e)}
 
 # Webhook endpoint for Telegram
 @app.post("/api/webhook")
@@ -1664,19 +1794,19 @@ async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token))
             return JSONResponse(status_code=404, content={"error": "User not found"})
         
         return JSONResponse({
-            "id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "balance": float(user.balance),
-            "games_played": user.games_played,
-            "games_won": user.games_won,
-            "total_deposits": float(user.total_deposits),
-            "total_withdrawals": float(user.total_withdrawals),
+            "id": user.get("telegram_id", user_id) if isinstance(user, dict) else user.telegram_id,
+            "username": user.get("username") if isinstance(user, dict) else user.username,
+            "first_name": user.get("first_name") if isinstance(user, dict) else user.first_name,
+            "last_name": user.get("last_name") if isinstance(user, dict) else user.last_name,
+            "balance": float(user.get("balance", 0)) if isinstance(user, dict) else float(user.balance),
+            "games_played": user.get("games_played", 0) if isinstance(user, dict) else user.games_played,
+            "games_won": user.get("games_won", 0) if isinstance(user, dict) else user.games_won,
+            "total_deposits": float(user.get("total_deposits", 0)) if isinstance(user, dict) else float(user.total_deposits),
+            "total_withdrawals": float(user.get("total_withdrawals", 0)) if isinstance(user, dict) else float(user.total_withdrawals),
             "is_banned": False,
             "is_vip": False,
-            "created_at": user.created_at.isoformat() if user.created_at else datetime.now().isoformat(),
-            "last_seen": user.last_seen.isoformat() if user.last_seen else datetime.now().isoformat()
+            "created_at": user.get("created_at", datetime.now().isoformat()) if isinstance(user, dict) else user.created_at.isoformat() if user.created_at else datetime.now().isoformat(),
+            "last_seen": user.get("last_seen", datetime.now().isoformat()) if isinstance(user, dict) else user.last_seen.isoformat() if user.last_seen else datetime.now().isoformat()
         })
     except Exception as e:
         logger.error(f"Admin get user error: {e}")
@@ -1697,37 +1827,41 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         if not user:
             return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
         
-        current = user.balance
+        current = user.get("balance", 0) if isinstance(user, dict) else user.balance
         
         if type_op == "add":
+            user_id_val = user.get("id") if isinstance(user, dict) else user.id
             await db.update_balance(
-                user_id=user.id,
+                user_id=user_id_val,
                 amount=amount,
                 transaction_type='admin_deposit',
                 description=f'Admin adjustment: {reason}'
             )
         elif type_op == "subtract":
-            if user.balance < amount:
+            if current < amount:
                 return JSONResponse({"success": False, "error": "Insufficient balance"})
+            user_id_val = user.get("id") if isinstance(user, dict) else user.id
             await db.update_balance(
-                user_id=user.id,
+                user_id=user_id_val,
                 amount=-amount,
                 transaction_type='admin_withdrawal',
                 description=f'Admin adjustment: {reason}'
             )
         elif type_op == "set":
             # For set, we need to calculate difference
-            diff = amount - user.balance
+            diff = amount - current
             if diff > 0:
+                user_id_val = user.get("id") if isinstance(user, dict) else user.id
                 await db.update_balance(
-                    user_id=user.id,
+                    user_id=user_id_val,
                     amount=diff,
                     transaction_type='admin_deposit',
                     description=f'Admin set balance to {amount}: {reason}'
                 )
             elif diff < 0:
+                user_id_val = user.get("id") if isinstance(user, dict) else user.id
                 await db.update_balance(
-                    user_id=user.id,
+                    user_id=user_id_val,
                     amount=diff,
                     transaction_type='admin_withdrawal',
                     description=f'Admin set balance to {amount}: {reason}'
@@ -1735,12 +1869,13 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         
         # Get updated user
         updated_user = await db.get_user(user_id)
+        new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
         
-        logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {updated_user.balance} ({reason})")
+        logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {new_balance} ({reason})")
         
         return JSONResponse({
             "success": True,
-            "new_balance": float(updated_user.balance)
+            "new_balance": float(new_balance)
         })
     except Exception as e:
         logger.error(f"Admin adjust balance error: {e}")
