@@ -295,3 +295,7 @@ class BingoGame {
 
 // Export
 window.BingoGame = BingoGame;
+
+
+// FIX: allow free marking
+function markCell(cell){ cell.classList.toggle('marked'); }
