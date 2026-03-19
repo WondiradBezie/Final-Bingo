@@ -6,11 +6,11 @@ services:
     instance_type: nano
     env:
       - key: BOT_TOKEN
-        value: "8364528174:AAHYYdkt5F1kqlKjbe6QhxvBgNcSfsc7aFY"
+        value: ""
       - key: WEBAPP_URL
         value: "https://conceptual-debby-wond-7482233b.koyeb.app"
       - key: ADMIN_IDS
-        value: "8576569079"
+        value: "
       - key: SUPABASE_URL
         value: "https://blbphrttoopytpholold.supabase.co"
       - key: SUPABASE_KEY
