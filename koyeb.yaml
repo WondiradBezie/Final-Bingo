@@ -1,0 +1,23 @@
+name: joy-bingo-bot
+region: was
+services:
+  - name: bot
+    type: web
+    instance_type: nano
+    env:
+      - key: BOT_TOKEN
+        value: "8364528174:AAHYYdkt5F1kqlKjbe6QhxvBgNcSfsc7aFY"
+      - key: WEBAPP_URL
+        value: "https://your-app.koyeb.app/bingo-game"
+      - key: ADMIN_IDS
+        value: "8576569079"
+      - key: SUPABASE_URL
+        value: "your_supabase_url"
+      - key: SUPABASE_KEY
+        value: "your_supabase_key"
+    ports:
+      - port: 8000
+    routes:
+      - path: /
+    build_command: "pip install -r requirements.txt"
+    run_command: "python bot.py"
