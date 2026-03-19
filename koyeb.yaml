@@ -19,5 +19,5 @@ services:
       - port: 8000
     routes:
       - path: /
-    build_command: "pip install -r requirements_free.txt"
+    build_command: "pip install -r requirements-free.txt"
     run_command: "python bot.py"
