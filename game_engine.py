@@ -347,3 +347,28 @@ class JackpotBingoGame(BingoGame):
             
             # Log jackpot win
             logger.info(f"{level.capitalize()} jackpot won by {len(winners)} players: {share} each")
+
+# ==== FIXES ADDED ====
+import time
+
+selection_start_time = None
+SELECTION_DURATION = 20
+disqualified_players = set()
+
+def start_selection_phase():
+    global selection_start_time
+    selection_start_time = time.time()
+
+def selection_open():
+    if selection_start_time is None:
+        return False
+    return (time.time() - selection_start_time) < SELECTION_DURATION
+
+def check_bingo(player_id, is_valid):
+    if player_id in disqualified_players:
+        return "blocked"
+    if is_valid:
+        return "win"
+    else:
+        disqualified_players.add(player_id)
+        return "disqualified"
