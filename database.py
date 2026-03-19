@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Async database URL (for PostgreSQL)
-ASYNC_DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/bingo"
+ASYNC_DATABASE_URL = "postgresql://postgres:BirtplasWond204695%24@db.blbphrttoopytpholold.supabase.co:5432/postgres"
 
 class DatabaseManager:
     def __init__(self):
