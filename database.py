@@ -1,192 +1,127 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, update, delete, and_, or_
-from datetime import datetime, timedelta
-import json
-from typing import Optional, List, Dict
-from models import *
+from supabase import create_client
+import os
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Async database URL (for PostgreSQL)
-ASYNC_DATABASE_URL = "postgresql://postgres:BirtplasWond204695%24@db.blbphrttoopytpholold.supabase.co:5432/postgres"
+# FIX 3: Correct Supabase initialization
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logger.error("❌ SUPABASE_URL or SUPABASE_KEY not set in environment variables")
+    supabase = None
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logger.info("✅ Supabase client initialized")
 
 class DatabaseManager:
-    def __init__(self):
-        self.engine = create_async_engine(
-            ASYNC_DATABASE_URL,
-            echo=False,
-            pool_size=20,
-            max_overflow=40
-        )
-        self.async_session = sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
-    
-    async def get_user(self, telegram_id: str) -> Optional[User]:
+    async def get_user(self, telegram_id: str):
         """Get user by telegram ID"""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == str(telegram_id))
-            )
-            return result.scalar_one_or_none()
+        try:
+            if not supabase:
+                return None
+            result = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user: {e}")
+            return None
     
-    async def create_user(self, telegram_id: str, **kwargs) -> User:
+    async def create_user(self, telegram_id: str, username=None, first_name=None, last_name=None):
         """Create new user"""
-        async with self.async_session() as session:
-            user = User(telegram_id=str(telegram_id), **kwargs)
-            session.add(user)
-            await session.commit()
-            await session.refresh(user)
-            return user
+        try:
+            if not supabase:
+                return None
+            user_data = {
+                "telegram_id": telegram_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "balance": 0,
+                "total_deposits": 0,
+                "total_withdrawals": 0,
+                "total_wins": 0,
+                "games_played": 0,
+                "games_won": 0,
+                "created_at": datetime.now().isoformat(),
+                "last_seen": datetime.now().isoformat()
+            }
+            result = supabase.table("users").insert(user_data).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return None
     
-    async def update_balance(self, user_id: int, amount: float, 
-                            transaction_type: str, description: str = "") -> bool:
-        """Update user balance with transaction record"""
-        async with self.async_session() as session:
-            try:
-                # Get user with lock
-                result = await session.execute(
-                    select(User).where(User.id == user_id).with_for_update()
-                )
-                user = result.scalar_one_or_none()
-                
-                if not user:
-                    return False
-                
-                # Update balance
-                old_balance = user.balance
-                user.balance += amount
-                
-                # Create transaction record
-                transaction = Transaction(
-                    user_id=user_id,
-                    type=transaction_type,
-                    amount=abs(amount),
-                    balance_after=user.balance,
-                    description=description,
-                    reference=f"{transaction_type}_{datetime.utcnow().timestamp()}"
-                )
-                
-                session.add(transaction)
-                
-                # Update totals based on type
-                if amount > 0:
-                    if transaction_type == 'win':
-                        user.total_wins += amount
-                    elif transaction_type == 'deposit':
-                        user.total_deposits += amount
-                else:
-                    if transaction_type == 'withdrawal':
-                        user.total_withdrawals += abs(amount)
-                
-                user.last_seen = datetime.utcnow()
-                
-                await session.commit()
-                
-                logger.info(f"Balance updated for user {user_id}: {old_balance} -> {user.balance}")
-                return True
-                
-            except Exception as e:
-                logger.error(f"Error updating balance: {e}")
-                await session.rollback()
+    async def update_balance(self, user_id: int, amount: float, transaction_type: str, description: str = ""):
+        """Update user balance"""
+        try:
+            if not supabase:
                 return False
-    
-    async def create_game(self, room_id: str, **settings) -> Game:
-        """Create new game"""
-        async with self.async_session() as session:
-            game = Game(
-                game_id=f"{room_id}_{int(datetime.utcnow().timestamp())}",
-                room_id=room_id,
-                status='waiting',
-                **settings
-            )
-            session.add(game)
-            await session.commit()
-            await session.refresh(game)
-            return game
-    
-    async def add_player_to_game(self, game_id: int, user_id: int, 
-                                 card_number: str, card_data: dict) -> bool:
-        """Add player to game"""
-        async with self.async_session() as session:
-            try:
-                # Check if player already in game
-                result = await session.execute(
-                    select(GamePlayer).where(
-                        and_(GamePlayer.game_id == game_id, 
-                             GamePlayer.user_id == user_id)
-                    )
-                )
-                if result.scalar_one_or_none():
-                    return False
-                
-                # Add player
-                game_player = GamePlayer(
-                    game_id=game_id,
-                    user_id=user_id,
-                    card_number=card_number,
-                    card_data=card_data
-                )
-                session.add(game_player)
-                
-                # Update game total bet
-                game = await session.get(Game, game_id)
-                if game:
-                    game.total_bet += game.card_price
-                    game.prize_pool = game.total_bet * game.prize_percentage / 100
-                    game.commission = game.total_bet - game.prize_pool
-                
-                await session.commit()
-                return True
-                
-            except Exception as e:
-                logger.error(f"Error adding player to game: {e}")
-                await session.rollback()
+            
+            # Get current user
+            user_result = supabase.table("users").select("*").eq("id", user_id).execute()
+            if not user_result.data or len(user_result.data) == 0:
                 return False
-    
-    async def get_active_games(self, limit: int = 10) -> List[Game]:
-        """Get active games"""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(Game).where(
-                    Game.status.in_(['waiting', 'active'])
-                ).order_by(Game.created_at.desc()).limit(limit)
-            )
-            return result.scalars().all()
-    
-    async def get_leaderboard(self, days: int = 7, limit: int = 10) -> List[Dict]:
-        """Get leaderboard for last N days"""
-        async with self.async_session() as session:
-            cutoff = datetime.utcnow() - timedelta(days=days)
             
-            result = await session.execute(
-                select(
-                    User.telegram_id,
-                    User.username,
-                    func.sum(Transaction.amount).label('total_winnings'),
-                    func.count(GamePlayer.id).label('games_won')
-                )
-                .join(Transaction)
-                .join(GamePlayer)
-                .where(
-                    and_(
-                        Transaction.type == 'win',
-                        Transaction.created_at >= cutoff
-                    )
-                )
-                .group_by(User.id)
-                .order_by(func.sum(Transaction.amount).desc())
-                .limit(limit)
-            )
+            user = user_result.data[0]
+            new_balance = user["balance"] + amount
             
-            return [{
-                'user_id': r[0],
-                'username': r[1],
-                'winnings': float(r[2]),
-                'wins': r[3]
-            } for r in result]
+            # Update user balance
+            update_data = {
+                "balance": new_balance,
+                "last_seen": datetime.now().isoformat()
+            }
+            
+            if amount > 0:
+                update_data["total_deposits"] = user.get("total_deposits", 0) + amount
+            else:
+                update_data["total_withdrawals"] = user.get("total_withdrawals", 0) + abs(amount)
+            
+            supabase.table("users").update(update_data).eq("id", user_id).execute()
+            
+            # Record transaction
+            transaction_data = {
+                "user_id": user_id,
+                "type": transaction_type,
+                "amount": abs(amount),
+                "balance_after": new_balance,
+                "description": description,
+                "created_at": datetime.now().isoformat()
+            }
+            supabase.table("transactions").insert(transaction_data).execute()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error updating balance: {e}")
+            return False
+    
+    async def get_leaderboard(self, days: int = 30, limit: int = 10):
+        """Get top players"""
+        try:
+            if not supabase:
+                return []
+            result = supabase.table("users") \
+                .select("username, first_name, games_won, balance") \
+                .order("games_won", desc=True) \
+                .limit(limit) \
+                .execute()
+            
+            leaderboard = []
+            for row in result.data:
+                leaderboard.append({
+                    "username": row.get("username") or row.get("first_name", "Unknown"),
+                    "wins": row.get("games_won", 0),
+                    "winnings": row.get("balance", 0)
+                })
+            return leaderboard
+        except Exception as e:
+            logger.error(f"Error getting leaderboard: {e}")
+            return []
 
 # Global database instance
 db = DatabaseManager()
