@@ -8,16 +8,16 @@ services:
       - key: BOT_TOKEN
         value: "8364528174:AAHYYdkt5F1kqlKjbe6QhxvBgNcSfsc7aFY"
       - key: WEBAPP_URL
-        value: "https://your-app.koyeb.app/bingo-game"
+        value: "https://conceptual-debby-wond-7482233b.koyeb.app"
       - key: ADMIN_IDS
         value: "8576569079"
       - key: SUPABASE_URL
-        value: "your_supabase_url"
+        value: "postgresql://postgres:BirtplasWond204695%24@db.blbphrttoopytpholold.supabase.co:5432/postgres"
       - key: SUPABASE_KEY
         value: "your_supabase_key"
     ports:
       - port: 8000
     routes:
       - path: /
-    build_command: "pip install -r requirements.txt"
+    build_command: "pip install -r requirements_free.txt"
     run_command: "python bot.py"
