@@ -1,234 +1,192 @@
-# database.py - Complete JSON Database (NO SUPABASE)
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select, update, delete, and_, or_
+from datetime import datetime, timedelta
 import json
-import os
-import random
-import string
-import time
-from datetime import datetime
+from typing import Optional, List, Dict
+from models import *
+import logging
 
-class Database:
+logger = logging.getLogger(__name__)
+
+# Async database URL (for PostgreSQL)
+ASYNC_DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/bingo"
+
+class DatabaseManager:
     def __init__(self):
-        self.users_file = "users.json"
-        self.pending_file = "pending_requests.json"
-        self.load_data()
+        self.engine = create_async_engine(
+            ASYNC_DATABASE_URL,
+            echo=False,
+            pool_size=20,
+            max_overflow=40
+        )
+        self.async_session = sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
     
-    def load_data(self):
-        """Load users and pending requests from JSON files"""
-        # Load users
-        if os.path.exists(self.users_file):
-            with open(self.users_file, 'r') as f:
-                self.users = json.load(f)
-        else:
-            self.users = {}
-            self.save_users()
-        
-        # Load pending requests
-        if os.path.exists(self.pending_file):
-            with open(self.pending_file, 'r') as f:
-                self.pending = json.load(f)
-        else:
-            self.pending = {"deposits": [], "withdrawals": []}
-            self.save_pending()
+    async def get_user(self, telegram_id: str) -> Optional[User]:
+        """Get user by telegram ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == str(telegram_id))
+            )
+            return result.scalar_one_or_none()
     
-    def save_users(self):
-        """Save users to JSON file"""
-        with open(self.users_file, 'w') as f:
-            json.dump(self.users, f, indent=2)
+    async def create_user(self, telegram_id: str, **kwargs) -> User:
+        """Create new user"""
+        async with self.async_session() as session:
+            user = User(telegram_id=str(telegram_id), **kwargs)
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
     
-    def save_pending(self):
-        """Save pending requests to JSON file"""
-        with open(self.pending_file, 'w') as f:
-            json.dump(self.pending, f, indent=2)
+    async def update_balance(self, user_id: int, amount: float, 
+                            transaction_type: str, description: str = "") -> bool:
+        """Update user balance with transaction record"""
+        async with self.async_session() as session:
+            try:
+                # Get user with lock
+                result = await session.execute(
+                    select(User).where(User.id == user_id).with_for_update()
+                )
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    return False
+                
+                # Update balance
+                old_balance = user.balance
+                user.balance += amount
+                
+                # Create transaction record
+                transaction = Transaction(
+                    user_id=user_id,
+                    type=transaction_type,
+                    amount=abs(amount),
+                    balance_after=user.balance,
+                    description=description,
+                    reference=f"{transaction_type}_{datetime.utcnow().timestamp()}"
+                )
+                
+                session.add(transaction)
+                
+                # Update totals based on type
+                if amount > 0:
+                    if transaction_type == 'win':
+                        user.total_wins += amount
+                    elif transaction_type == 'deposit':
+                        user.total_deposits += amount
+                else:
+                    if transaction_type == 'withdrawal':
+                        user.total_withdrawals += abs(amount)
+                
+                user.last_seen = datetime.utcnow()
+                
+                await session.commit()
+                
+                logger.info(f"Balance updated for user {user_id}: {old_balance} -> {user.balance}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error updating balance: {e}")
+                await session.rollback()
+                return False
     
-    def get_user(self, user_id):
-        """Get or create user"""
-        user_id = str(user_id)
-        if user_id not in self.users:
-            self.users[user_id] = {
-                "name": "",
-                "phone": "",
-                "balance": 0.0,
-                "wallet": 0.0,
-                "non_withdrawable": 0.0,
-                "selected_card": None,
-                "registered": False,
-                "is_super_agent": False,
-                "referral_code": self.generate_referral_code(),
-                "referred_by": None,
-                "referrals": [],
-                "transactions": [],
-                "total_wins": 0,
-                "total_earnings": 0.0,
-                "is_locked": False,
-                "current_game_card": None,
-                "game_token": None
-            }
-            self.save_users()
-        return self.users[user_id]
+    async def create_game(self, room_id: str, **settings) -> Game:
+        """Create new game"""
+        async with self.async_session() as session:
+            game = Game(
+                game_id=f"{room_id}_{int(datetime.utcnow().timestamp())}",
+                room_id=room_id,
+                status='waiting',
+                **settings
+            )
+            session.add(game)
+            await session.commit()
+            await session.refresh(game)
+            return game
     
-    def generate_referral_code(self):
-        """Generate unique referral code"""
-        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    async def add_player_to_game(self, game_id: int, user_id: int, 
+                                 card_number: str, card_data: dict) -> bool:
+        """Add player to game"""
+        async with self.async_session() as session:
+            try:
+                # Check if player already in game
+                result = await session.execute(
+                    select(GamePlayer).where(
+                        and_(GamePlayer.game_id == game_id, 
+                             GamePlayer.user_id == user_id)
+                    )
+                )
+                if result.scalar_one_or_none():
+                    return False
+                
+                # Add player
+                game_player = GamePlayer(
+                    game_id=game_id,
+                    user_id=user_id,
+                    card_number=card_number,
+                    card_data=card_data
+                )
+                session.add(game_player)
+                
+                # Update game total bet
+                game = await session.get(Game, game_id)
+                if game:
+                    game.total_bet += game.card_price
+                    game.prize_pool = game.total_bet * game.prize_percentage / 100
+                    game.commission = game.total_bet - game.prize_pool
+                
+                await session.commit()
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error adding player to game: {e}")
+                await session.rollback()
+                return False
     
-    def generate_game_token(self, user_id):
-        """Generate unique game token"""
-        token = f"{user_id}_{int(time.time())}_{random.randint(1000, 9999)}"
-        self.get_user(user_id)["game_token"] = token
-        self.save_users()
-        return token
+    async def get_active_games(self, limit: int = 10) -> List[Game]:
+        """Get active games"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Game).where(
+                    Game.status.in_(['waiting', 'active'])
+                ).order_by(Game.created_at.desc()).limit(limit)
+            )
+            return result.scalars().all()
     
-    def verify_game_token(self, token):
-        """Verify game token and return user_id"""
-        for user_id, data in self.users.items():
-            if data.get("game_token") == token:
-                return user_id
-        return None
-    
-    def update_balance(self, user_id, amount, transaction_type, description):
-        """Update user balance"""
-        user_id = str(user_id)
-        if user_id in self.users:
-            self.users[user_id]["balance"] += amount
-            self.users[user_id]["wallet"] = self.users[user_id]["balance"]
+    async def get_leaderboard(self, days: int = 7, limit: int = 10) -> List[Dict]:
+        """Get leaderboard for last N days"""
+        async with self.async_session() as session:
+            cutoff = datetime.utcnow() - timedelta(days=days)
             
-            # Add transaction record
-            if "transactions" not in self.users[user_id]:
-                self.users[user_id]["transactions"] = []
+            result = await session.execute(
+                select(
+                    User.telegram_id,
+                    User.username,
+                    func.sum(Transaction.amount).label('total_winnings'),
+                    func.count(GamePlayer.id).label('games_won')
+                )
+                .join(Transaction)
+                .join(GamePlayer)
+                .where(
+                    and_(
+                        Transaction.type == 'win',
+                        Transaction.created_at >= cutoff
+                    )
+                )
+                .group_by(User.id)
+                .order_by(func.sum(Transaction.amount).desc())
+                .limit(limit)
+            )
             
-            self.users[user_id]["transactions"].append({
-                "type": transaction_type,
-                "amount": amount,
-                "description": description,
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            if amount > 0 and transaction_type == "win":
-                self.users[user_id]["total_wins"] = self.users[user_id].get("total_wins", 0) + 1
-                self.users[user_id]["total_earnings"] = self.users[user_id].get("total_earnings", 0) + amount
-            
-            self.save_users()
-            return True
-        return False
-    
-    def lock_player(self, user_id):
-        """Lock player during game"""
-        user_id = str(user_id)
-        if user_id in self.users:
-            self.users[user_id]["is_locked"] = True
-            self.save_users()
-    
-    def unlock_player(self, user_id):
-        """Unlock player after game"""
-        user_id = str(user_id)
-        if user_id in self.users:
-            self.users[user_id]["is_locked"] = False
-            self.users[user_id]["current_game_card"] = None
-            self.save_users()
-    
-    def unlock_all_players(self):
-        """Unlock all players"""
-        for user_id in self.users:
-            self.users[user_id]["is_locked"] = False
-            self.users[user_id]["current_game_card"] = None
-        self.save_users()
-    
-    def add_pending_deposit(self, user_id, amount, payment_method, transaction_id):
-        """Add pending deposit request"""
-        request = {
-            "id": len(self.pending["deposits"]) + 1,
-            "user_id": str(user_id),
-            "user_name": self.users.get(str(user_id), {}).get("name", "Unknown"),
-            "user_phone": self.users.get(str(user_id), {}).get("phone", "Unknown"),
-            "amount": amount,
-            "payment_method": payment_method,
-            "transaction_id": transaction_id,
-            "timestamp": datetime.now().isoformat(),
-            "status": "pending"
-        }
-        self.pending["deposits"].append(request)
-        self.save_pending()
-        return request
-    
-    def add_pending_withdrawal(self, user_id, amount, bank_info):
-        """Add pending withdrawal request"""
-        request = {
-            "id": len(self.pending["withdrawals"]) + 1,
-            "user_id": str(user_id),
-            "user_name": self.users.get(str(user_id), {}).get("name", "Unknown"),
-            "user_phone": self.users.get(str(user_id), {}).get("phone", "Unknown"),
-            "amount": amount,
-            "bank_info": bank_info,
-            "timestamp": datetime.now().isoformat(),
-            "status": "pending"
-        }
-        self.pending["withdrawals"].append(request)
-        self.save_pending()
-        return request
-    
-    def approve_deposit(self, request_id):
-        """Approve deposit request"""
-        for request in self.pending["deposits"]:
-            if request["id"] == request_id and request["status"] == "pending":
-                request["status"] = "approved"
-                request["approved_at"] = datetime.now().isoformat()
-                user_id = request["user_id"]
-                amount = request["amount"]
-                self.update_balance(user_id, amount, "deposit", f"Deposit approved: {amount} Birr")
-                self.save_pending()
-                return request
-        return None
-    
-    def reject_deposit(self, request_id, reason=""):
-        """Reject deposit request"""
-        for request in self.pending["deposits"]:
-            if request["id"] == request_id and request["status"] == "pending":
-                request["status"] = "rejected"
-                request["rejected_at"] = datetime.now().isoformat()
-                request["rejection_reason"] = reason
-                self.save_pending()
-                return request
-        return None
-    
-    def approve_withdrawal(self, request_id):
-        """Approve withdrawal request"""
-        for request in self.pending["withdrawals"]:
-            if request["id"] == request_id and request["status"] == "pending":
-                request["status"] = "approved"
-                request["approved_at"] = datetime.now().isoformat()
-                self.save_pending()
-                return request
-        return None
-    
-    def reject_withdrawal(self, request_id, reason=""):
-        """Reject withdrawal request and refund money"""
-        for request in self.pending["withdrawals"]:
-            if request["id"] == request_id and request["status"] == "pending":
-                request["status"] = "rejected"
-                request["rejected_at"] = datetime.now().isoformat()
-                request["rejection_reason"] = reason
-                user_id = request["user_id"]
-                amount = request["amount"]
-                self.update_balance(user_id, amount, "refund", f"Withdrawal rejected, refund: {amount} Birr")
-                self.save_pending()
-                return request
-        return None
-    
-    def get_pending_deposits(self):
-        """Get all pending deposits"""
-        return [r for r in self.pending["deposits"] if r["status"] == "pending"]
-    
-    def get_pending_withdrawals(self):
-        """Get all pending withdrawals"""
-        return [r for r in self.pending["withdrawals"] if r["status"] == "pending"]
-    
-    def get_user_pending_requests(self, user_id):
-        """Get all pending requests for a user"""
-        user_id = str(user_id)
-        deposits = [r for r in self.pending["deposits"] 
-                   if r["user_id"] == user_id and r["status"] == "pending"]
-        withdrawals = [r for r in self.pending["withdrawals"] 
-                      if r["user_id"] == user_id and r["status"] == "pending"]
-        return deposits, withdrawals
+            return [{
+                'user_id': r[0],
+                'username': r[1],
+                'winnings': float(r[2]),
+                'wins': r[3]
+            } for r in result]
 
-# Create global database instance
-db = Database()
+# Global database instance
+db = DatabaseManager()
