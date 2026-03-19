@@ -1,8 +1,8 @@
+# models.py
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
-import json
 
 Base = declarative_base()
 
@@ -39,16 +39,6 @@ class User(Base):
     # Relationships
     transactions = relationship("Transaction", back_populates="user")
     game_players = relationship("GamePlayer", back_populates="user")
-    
-    def to_dict(self):
-        return {
-            'id': self.telegram_id,
-            'username': self.username,
-            'balance': self.balance,
-            'games_played': self.games_played,
-            'games_won': self.games_won,
-            'win_rate': (self.games_won / self.games_played * 100) if self.games_played > 0 else 0
-        }
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -58,7 +48,7 @@ class Transaction(Base):
     type = Column(String(20))  # deposit, withdrawal, bet, win, refund
     amount = Column(Float)
     balance_after = Column(Float)
-    status = Column(String(20), default='completed')  # pending, completed, failed
+    status = Column(String(20), default='completed')
     reference = Column(String(100))
     description = Column(Text)
     
@@ -96,17 +86,6 @@ class Game(Base):
     
     # Relationships
     players = relationship("GamePlayer", back_populates="game")
-    
-    def to_dict(self):
-        return {
-            'game_id': self.game_id,
-            'room_id': self.room_id,
-            'status': self.status,
-            'players': len(self.players),
-            'max_players': self.max_players,
-            'prize_pool': self.prize_pool,
-            'called_numbers': self.called_numbers[-10:] if self.called_numbers else []
-        }
 
 class GamePlayer(Base):
     __tablename__ = 'game_players'
@@ -116,7 +95,7 @@ class GamePlayer(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     
     card_number = Column(String(10))
-    card_data = Column(JSON)  # The actual bingo card
+    card_data = Column(JSON)
     marked_numbers = Column(JSON, default=list)
     
     bingo_called = Column(Boolean, default=False)
