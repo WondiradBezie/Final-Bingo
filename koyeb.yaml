@@ -12,7 +12,7 @@ services:
       - key: ADMIN_IDS
         value: "8576569079"
       - key: SUPABASE_URL
-        value: "postgresql://postgres:BirtplasWond204695%24@db.blbphrttoopytpholold.supabase.co:5432/postgres"
+        value: "https://blbphrttoopytpholold.supabase.co"
       - key: SUPABASE_KEY
         value: "sb_publishable_x3HntYTXjhOu1aETV7-nRg_ZTQnpxkf"
     ports:
