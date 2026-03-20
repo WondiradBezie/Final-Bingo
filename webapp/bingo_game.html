@@ -146,12 +146,6 @@
             animation: pulse-critical 0.5s infinite;
         }
 
-        .timer-circle.expired {
-            color: #999;
-            background: #eee;
-            animation: none;
-        }
-
         .timer-circle.extended {
             color: #4caf50;
             animation: pulse-extended 1s infinite;
@@ -615,6 +609,10 @@
             background: #4caf50;
         }
 
+        .status-banner.waiting {
+            background: #9c27b0;
+        }
+
         .next-game-timer {
             font-size: 18px;
             font-weight: bold;
@@ -637,7 +635,8 @@
                 <span class="selection-subtitle">Select Card (1-400)</span>
             </div>
             <div id="timerWarning" class="status-banner warning hidden">⏰ Time is running out! Select your card now.</div>
-            <div id="playerCountMessage" class="status-banner info hidden">👥 Waiting for more players...</div>
+            <div id="waitingMessage" class="status-banner waiting hidden">⏳ Waiting for more players to join...</div>
+            <div id="playerCountMessage" class="status-banner info hidden">👥 Players selected: <span id="selectedCount">0</span></div>
             <div class="loading" id="loadingCards">Loading available cards...</div>
             <div class="cards-grid" id="cardsGrid"></div>
         </div>
@@ -749,7 +748,7 @@
         let gameStarted = false;
         let selectionEnded = false;
         let extensionCount = 0;
-        const MAX_EXTENSIONS = 3; // Maximum number of 20s extensions
+        const MAX_EXTENSIONS = 5; // Maximum number of 20s extensions
         
         // Game end variables
         let gameEnded = false;
@@ -810,242 +809,135 @@
             }
         }
 
-        // Check if selection is still allowed from server
-        async function checkSelectionAllowed() {
-            try {
-                const response = await fetch('/can_select');
-                const data = await response.json();
-                
-                if (!data.allowed && !gameStarted && !selectionEnded) {
-                    // Check how many players selected
-                    const selectedCount = await getSelectedPlayersCount();
-                    
-                    if (selectedCount < 2 && extensionCount < MAX_EXTENSIONS) {
-                        // Extend timer by 20 seconds
-                        extensionCount++;
-                        selectionTimer += 20;
-                        
-                        // Show extension message
-                        const warning = document.getElementById('timerWarning');
-                        warning.textContent = `⏰ Not enough players! Timer extended (+20s) - Attempt ${extensionCount}/${MAX_EXTENSIONS}`;
-                        warning.classList.remove('hidden');
-                        
-                        // Update timer display
-                        const timerElement = document.getElementById('selectionTimer');
-                        timerElement.classList.add('extended');
-                        
-                        // Reset selection ended flag
-                        selectionEnded = false;
-                        
-                        return true;
-                    } else {
-                        // Time's up - proceed with game even if <2 players
-                        selectionEnded = true;
-                        
-                        // Update timer display
-                        const timerElement = document.getElementById('selectionTimer');
-                        if (timerElement) {
-                            timerElement.textContent = '0';
-                            timerElement.classList.add('expired');
-                        }
-                        
-                        // Disable all card buttons
-                        document.querySelectorAll('.card-btn').forEach(btn => {
-                            btn.classList.add('disabled');
-                            btn.disabled = true;
-                        });
-                        
-                        // Show message
-                        const warning = document.getElementById('timerWarning');
-                        warning.textContent = selectedCount < 2 ? 
-                            '⏰ Starting game with fewer players...' : 
-                            '⏰ Selection time has ended!';
-                        warning.classList.remove('hidden');
-                        
-                        // Start the game (spectator mode for non-players)
-                        if (selectedCount >= 1) {
-                            startGameAfterTimer();
-                        } else {
-                            // No players selected - show error and reload
-                            alert('No players selected. Returning to lobby...');
-                            setTimeout(() => {
-                                window.location.href = '/webapp/lobby.html';
-                            }, 2000);
-                        }
-                    }
-                }
-                return data.allowed;
-            } catch (e) {
-                console.error('Error checking selection status:', e);
-                return true;
-            }
-        }
-
-        // Start polling server for selection status
-        function startSelectionStatusPoll() {
-            const interval = setInterval(async () => {
-                if (selectionEnded || gameStarted) {
-                    clearInterval(interval);
-                    return;
-                }
-                await checkSelectionAllowed();
-            }, 1000);
-        }
-
-        // Start selection timer
-        function startSelectionTimer() {
-            fetch('/can_select')
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.allowed) {
-                        handleSelectionEnd();
-                        return;
-                    }
-                    
-                    selectionTimer = 20;
-                    extensionCount = 0;
-                    updateTimerDisplay();
-                    
-                    timerInterval = setInterval(async () => {
-                        selectionTimer--;
-                        updateTimerDisplay();
-                        
-                        // Show warning at 5 seconds
-                        if (selectionTimer === 5) {
-                            const warning = document.getElementById('timerWarning');
-                            warning.textContent = '⏰ Time is running out! Select your card now.';
-                            warning.classList.remove('hidden');
-                        }
-                        
-                        if (selectionTimer <= 0) {
-                            clearInterval(timerInterval);
-                            timerInterval = null;
-                            
-                            // Check player count and possibly extend
-                            const selectedCount = await getSelectedPlayersCount();
-                            
-                            if (selectedCount < 2 && extensionCount < MAX_EXTENSIONS) {
-                                // Extend timer
-                                extensionCount++;
-                                selectionTimer = 20;
-                                
-                                const warning = document.getElementById('timerWarning');
-                                warning.textContent = `⏰ Not enough players! Timer extended (+20s) - Attempt ${extensionCount}/${MAX_EXTENSIONS}`;
-                                warning.classList.remove('hidden');
-                                
-                                const timerElement = document.getElementById('selectionTimer');
-                                timerElement.classList.add('extended');
-                                
-                                // Continue countdown
-                                startSelectionTimer();
-                            } else {
-                                handleSelectionEnd();
-                            }
-                        }
-                    }, 1000);
-                    
-                    startSelectionStatusPoll();
-                })
-                .catch(err => {
-                    console.error('Error syncing timer:', err);
-                    startLocalTimer();
-                });
-        }
-        
-        function handleSelectionEnd() {
-            selectionEnded = true;
-            
-            const timerElement = document.getElementById('selectionTimer');
-            if (timerElement) {
-                timerElement.textContent = '0';
-                timerElement.classList.add('expired');
+        // Update player count display
+        async function updatePlayerCountDisplay() {
+            const count = await getSelectedPlayersCount();
+            const countElement = document.getElementById('selectedCount');
+            if (countElement) {
+                countElement.textContent = count;
             }
             
-            document.querySelectorAll('.card-btn').forEach(btn => {
-                btn.classList.add('disabled');
-                btn.disabled = true;
-            });
-            
-            // Check if current user selected a card
-            getSelectedPlayersCount().then(selectedCount => {
-                if (selectedCount >= 1) {
-                    startGameAfterTimer();
+            // Show/hide player count message
+            const messageElement = document.getElementById('playerCountMessage');
+            if (messageElement) {
+                if (count > 0) {
+                    messageElement.classList.remove('hidden');
                 } else {
+                    messageElement.classList.add('hidden');
+                }
+            }
+            
+            return count;
+        }
+
+        // Check selection status at timer end
+        async function checkTimerEnd() {
+            const selectedCount = await getSelectedPlayersCount();
+            
+            // Update display
+            document.getElementById('selectedCount').textContent = selectedCount;
+            
+            if (selectedCount >= 2) {
+                // 2+ players - start game
+                const warning = document.getElementById('timerWarning');
+                warning.textContent = '✅ Enough players! Starting game...';
+                warning.classList.add('success');
+                warning.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    startGameAfterTimer();
+                }, 1000);
+                return true;
+            } 
+            else if (selectedCount === 1) {
+                // 1 player - extend timer by 20 seconds
+                extensionCount++;
+                
+                if (extensionCount <= MAX_EXTENSIONS) {
+                    selectionTimer = 20;
+                    
+                    const waitingMsg = document.getElementById('waitingMessage');
+                    waitingMsg.textContent = `⏳ Only 1 player selected. Waiting ${selectionTimer}s for more players... (Attempt ${extensionCount}/${MAX_EXTENSIONS})`;
+                    waitingMsg.classList.remove('hidden');
+                    
+                    const timerElement = document.getElementById('selectionTimer');
+                    timerElement.classList.add('extended');
+                    
+                    // Continue countdown
+                    startCountdown();
+                    return false;
+                } else {
+                    // Max extensions reached - start game with 1 player
                     const warning = document.getElementById('timerWarning');
-                    warning.textContent = 'No players selected. Returning to lobby...';
+                    warning.textContent = '⏰ Max wait time reached. Starting game with 1 player...';
                     warning.classList.remove('hidden');
                     
                     setTimeout(() => {
-                        window.location.href = '/webapp/lobby.html';
-                    }, 3000);
+                        startGameAfterTimer();
+                    }, 1000);
+                    return true;
                 }
-            });
+            } 
+            else {
+                // 0 players - stay on selection board, keep timer at 0 but don't start game
+                const waitingMsg = document.getElementById('waitingMessage');
+                waitingMsg.textContent = '👥 No players selected. Waiting for players to join...';
+                waitingMsg.classList.remove('hidden');
+                
+                // Reset timer to 20 but don't start countdown automatically
+                selectionTimer = 20;
+                const timerElement = document.getElementById('selectionTimer');
+                timerElement.textContent = '20';
+                timerElement.classList.remove('extended', 'critical', 'warning');
+                
+                // Don't start game, just wait
+                return false;
+            }
         }
-        
-        function startLocalTimer() {
-            selectionTimer = 20;
-            extensionCount = 0;
-            updateTimerDisplay();
+
+        // Start countdown
+        function startCountdown() {
+            if (timerInterval) clearInterval(timerInterval);
             
             timerInterval = setInterval(async () => {
                 selectionTimer--;
                 updateTimerDisplay();
                 
+                // Show warning at 5 seconds
                 if (selectionTimer === 5) {
                     const warning = document.getElementById('timerWarning');
                     warning.textContent = '⏰ Time is running out! Select your card now.';
-                    warning.classList.remove('hidden');
+                    warning.classList.remove('hidden', 'success');
                 }
                 
                 if (selectionTimer <= 0) {
                     clearInterval(timerInterval);
                     timerInterval = null;
                     
-                    const selectedCount = hasSelectedCard ? 1 : 0;
-                    
-                    if (selectedCount < 2 && extensionCount < MAX_EXTENSIONS) {
-                        extensionCount++;
-                        selectionTimer = 20;
-                        
-                        const warning = document.getElementById('timerWarning');
-                        warning.textContent = `⏰ Not enough players! Timer extended (+20s) - Attempt ${extensionCount}/${MAX_EXTENSIONS}`;
-                        warning.classList.remove('hidden');
-                        
-                        const timerElement = document.getElementById('selectionTimer');
-                        timerElement.classList.add('extended');
-                        
-                        startLocalTimer();
-                    } else {
-                        selectionEnded = true;
-                        
-                        const timerElement = document.getElementById('selectionTimer');
-                        timerElement.textContent = '0';
-                        timerElement.classList.add('expired');
-                        
-                        document.querySelectorAll('.card-btn').forEach(btn => {
-                            btn.classList.add('disabled');
-                            btn.disabled = true;
-                        });
-                        
-                        if (hasSelectedCard) {
-                            startGameAfterTimer();
-                        } else {
-                            const warning = document.getElementById('timerWarning');
-                            warning.textContent = 'No card selected. Returning to lobby...';
-                            warning.classList.remove('hidden');
-                            
-                            setTimeout(() => {
-                                window.location.href = '/webapp/lobby.html';
-                            }, 3000);
-                        }
-                    }
+                    // Check what to do at timer end
+                    await checkTimerEnd();
                 }
             }, 1000);
+        }
+
+        // Start selection timer
+        function startSelectionTimer() {
+            // Initial player count display
+            updatePlayerCountDisplay();
+            
+            // Start periodic player count updates
+            setInterval(updatePlayerCountDisplay, 2000);
+            
+            selectionTimer = 20;
+            extensionCount = 0;
+            updateTimerDisplay();
+            
+            startCountdown();
         }
         
         function updateTimerDisplay() {
             const timerElement = document.getElementById('selectionTimer');
-            if (timerElement && !selectionEnded) {
+            if (timerElement && !gameStarted) {
                 timerElement.textContent = selectionTimer;
                 
                 if (selectionTimer <= 5) {
@@ -1063,6 +955,11 @@
         function startGameAfterTimer() {
             if (!gameStarted) {
                 gameStarted = true;
+                
+                // Hide all selection screen messages
+                document.getElementById('timerWarning').classList.add('hidden');
+                document.getElementById('waitingMessage').classList.add('hidden');
+                document.getElementById('playerCountMessage').classList.add('hidden');
                 
                 // Determine if current user is a player or spectator
                 if (hasSelectedCard) {
@@ -1317,14 +1214,8 @@
         }
 
         async function selectCard(cardNum) {
-            if (selectionEnded) {
-                alert('Selection time has ended!');
-                return;
-            }
-            
-            const allowed = await checkSelectionAllowed();
-            if (!allowed && !selectionEnded) {
-                alert('Selection time has ended!');
+            if (gameStarted) {
+                alert('Game has already started!');
                 return;
             }
             
@@ -1375,6 +1266,9 @@
                 cardNumber = cardNum;
                 
                 document.getElementById('selected-card-num').textContent = `#${cardNum}`;
+                
+                // Update player count after selection
+                await updatePlayerCountDisplay();
                 
             } catch (error) {
                 console.error('Error selecting card:', error);
