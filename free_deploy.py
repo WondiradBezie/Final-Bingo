@@ -18,9 +18,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQuer
 import httpx
 import random
 from database import db
-from models import User, Transaction
 import asyncpg
-from sqlalchemy import text
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
