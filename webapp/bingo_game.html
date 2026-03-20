@@ -25,7 +25,7 @@
 
         .game-container {
             width: 100%;
-            max-width: 950px;
+            max-width: 1000px;
             background: white;
             border-radius: 15px;
             padding: 12px;
@@ -42,7 +42,7 @@
             align-items: center;
             background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            padding: 10px 12px;
+            padding: 10px 15px;
             border-radius: 10px;
             margin-bottom: 10px;
             flex-wrap: nowrap;
@@ -51,11 +51,11 @@
 
         .stat-block {
             text-align: center;
-            min-width: 45px;
+            min-width: 50px;
         }
 
         .stat-label {
-            font-size: 9px;
+            font-size: 10px;
             opacity: 0.9;
             text-transform: uppercase;
             font-weight: 600;
@@ -64,16 +64,16 @@
         }
 
         .stat-value {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: bold;
             line-height: 1.2;
         }
 
         .game-title {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: bold;
             background: rgba(255,255,255,0.2);
-            padding: 4px 10px;
+            padding: 4px 12px;
             border-radius: 20px;
             white-space: nowrap;
         }
@@ -166,21 +166,21 @@
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
-            gap: 5px;
+            gap: 6px;
             flex: 1;
             overflow-y: auto;
-            padding: 8px;
+            padding: 10px;
             background: #f8f9fa;
             border-radius: 8px;
             min-height: 0;
         }
 
         .card-btn {
-            padding: 12px 2px;
-            font-size: 12px;
+            padding: 15px 2px;
+            font-size: 14px;
             font-weight: 600;
             border: 1px solid #dee2e6;
-            border-radius: 4px;
+            border-radius: 6px;
             background: white;
             cursor: pointer;
             text-align: center;
@@ -267,14 +267,14 @@
         /* Main Content - Two Columns with flex growth */
         .main-content {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             flex: 1;
             min-height: 0;
         }
 
         /* Left Side - Number Board */
         .number-board {
-            flex: 0.9;
+            flex: 0.8;
             background: #f8f9fa;
             border-radius: 10px;
             padding: 8px;
@@ -327,9 +327,9 @@
             text-align: center;
             font-weight: bold;
             font-size: 10px;
-            padding: 1px;
+            padding: 2px;
             border-radius: 3px;
-            margin-bottom: 1px;
+            margin-bottom: 2px;
             flex-shrink: 0;
         }
 
@@ -344,10 +344,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 600;
             background: white;
-            border-radius: 2px;
+            border-radius: 3px;
             color: #333;
             border: 1px solid #dee2e6;
             min-height: 0;
@@ -361,12 +361,12 @@
             border-color: #2e7d32;
         }
 
-        /* Right Side Container */
+        /* Right Side Container - BIGGER PLAYER CARD */
         .right-container {
-            flex: 1;
+            flex: 1.2;
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 8px;
             min-height: 0;
         }
 
@@ -374,7 +374,7 @@
         .current-call-section {
             background: #ff4444;
             color: white;
-            padding: 8px 12px;
+            padding: 10px 15px;
             border-radius: 8px;
             flex-shrink: 0;
         }
@@ -388,36 +388,36 @@
         .call-left {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
 
         .call-label {
-            font-size: 12px;
+            font-size: 14px;
             opacity: 0.9;
             font-weight: 500;
         }
 
         .call-number-big {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 800;
             line-height: 1;
         }
 
         .call-letter-big {
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 700;
         }
 
         .recent-calls-row {
             display: flex;
-            gap: 5px;
-            margin-top: 5px;
+            gap: 8px;
+            margin-top: 8px;
             justify-content: flex-end;
         }
 
         .recent-ball {
-            width: 26px;
-            height: 26px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             background: rgba(255,255,255,0.2);
             color: white;
@@ -425,14 +425,14 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 13px;
         }
 
-        /* Player Card */
+        /* Player Card - MUCH BIGGER BUTTONS */
         .player-card {
             background: #f8f9fa;
-            border-radius: 10px;
-            padding: 6px;
+            border-radius: 12px;
+            padding: 12px;
             border: 1px solid #e0e0e0;
             display: flex;
             flex-direction: column;
@@ -445,38 +445,40 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 4px;
-            padding: 0 2px;
+            margin-bottom: 10px;
+            padding: 0 5px;
             flex-shrink: 0;
         }
 
         .card-title {
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 16px;
+            font-weight: 700;
             color: #333;
         }
 
         .card-number {
             background: #833AB4;
             color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 9px;
+            padding: 4px 15px;
+            border-radius: 20px;
+            font-size: 14px;
             font-weight: bold;
         }
 
         .bingo-grid {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 6px;
             width: 100%;
+            flex: 1;
         }
 
         .grid-row {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 2px;
+            gap: 6px;
             width: 100%;
+            flex: 1;
         }
 
         .player-cell {
@@ -484,37 +486,40 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
+            font-size: 22px;
+            font-weight: 700;
             background: white;
-            border-radius: 4px;
+            border-radius: 10px;
             color: #333;
-            border: 1px solid #dee2e6;
+            border: 2px solid #dee2e6;
             cursor: pointer;
             width: 100%;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
             transition: all 0.2s;
         }
 
         .player-cell.header {
             background: linear-gradient(135deg, #405DE6, #833AB4);
             color: white;
-            font-size: 14px;
-            font-weight: 700;
+            font-size: 24px;
+            font-weight: 800;
             border: none;
             cursor: default;
+            box-shadow: 0 3px 8px rgba(65,88,208,0.3);
         }
 
         .player-cell.marked {
             background: #4caf50 !important;
             color: white !important;
             border-color: #2e7d32;
+            transform: scale(0.98);
         }
 
         .player-cell.free {
             background: #ffd700;
             color: #333;
-            font-weight: 700;
+            font-weight: 800;
+            border-color: #daa520;
         }
 
         .player-cell.free.marked {
@@ -537,27 +542,35 @@
             transform: none;
         }
 
-        /* Bingo Button */
+        .player-cell:hover:not(.header):not(.spectator-cell):not(.disqualified) {
+            transform: scale(1.05);
+            box-shadow: 0 5px 12px rgba(0,0,0,0.2);
+            border-color: #405DE6;
+        }
+
+        /* Bingo Button - BIGGER */
         .card-bingo-btn {
             width: 100%;
-            margin-top: 6px;
-            padding: 8px;
+            margin-top: 12px;
+            padding: 15px;
             background: #ff4444;
             color: white;
             border: none;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 12px;
+            font-size: 22px;
             font-weight: bold;
             cursor: pointer;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
             transition: all 0.2s;
             flex-shrink: 0;
+            box-shadow: 0 4px 10px rgba(255,68,68,0.3);
         }
 
         .card-bingo-btn:hover:not(:disabled) {
             background: #ff6666;
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(255,68,68,0.4);
         }
 
         .card-bingo-btn:active:not(:disabled) {
@@ -575,22 +588,23 @@
         }
 
         .cards-grid::-webkit-scrollbar {
-            width: 3px;
+            width: 4px;
         }
         
         .cards-grid::-webkit-scrollbar-thumb {
             background: #ccc;
-            border-radius: 3px;
+            border-radius: 4px;
         }
 
         .status-banner {
             background: #ff9800;
             color: white;
-            padding: 8px;
-            border-radius: 4px;
+            padding: 10px;
+            border-radius: 8px;
             text-align: center;
             margin: 10px 0;
             font-weight: bold;
+            font-size: 14px;
         }
 
         .status-banner.disqualified {
@@ -614,7 +628,7 @@
         }
 
         .next-game-timer {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: bold;
             margin-left: 10px;
             color: #ffd700;
@@ -702,7 +716,7 @@
                         <div class="recent-calls-row" id="recent-calls"></div>
                     </div>
 
-                    <!-- Player Card -->
+                    <!-- Player Card - BIG BUTTONS -->
                     <div class="player-card" id="playerCard">
                         <div class="card-header">
                             <span class="card-title">🎴 YOUR CARD</span>
@@ -710,7 +724,7 @@
                         </div>
                         <div class="bingo-grid" id="bingo-grid"></div>
                         
-                        <!-- BINGO BUTTON -->
+                        <!-- BINGO BUTTON - BIG -->
                         <button class="card-bingo-btn" id="bingo-btn" onclick="callBingo()">🎯 BINGO!</button>
                     </div>
                 </div>
@@ -988,10 +1002,12 @@
             }
         }
 
+        // Render bingo card with BIG buttons
         function renderBingoCard() {
             const grid = document.getElementById('bingo-grid');
             grid.innerHTML = '';
             
+            // Header row with BIG letters
             const headerRow = document.createElement('div');
             headerRow.className = 'grid-row';
             ['B', 'I', 'N', 'G', 'O'].forEach(letter => {
