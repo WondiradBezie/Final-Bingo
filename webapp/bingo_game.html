@@ -146,6 +146,12 @@
             animation: pulse-critical 0.5s infinite;
         }
 
+        .timer-circle.expired {
+            color: #999;
+            background: #eee;
+            animation: none;
+        }
+
         @keyframes pulse-critical {
             0% { transform: scale(1); }
             50% { transform: scale(1.12); box-shadow: 0 6px 20px rgba(255,0,0,0.5); }
@@ -177,6 +183,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: all 0.2s;
         }
 
         .card-btn.taken {
@@ -197,6 +204,7 @@
             opacity: 0.5;
             cursor: not-allowed;
             pointer-events: none;
+            background: #f0f0f0;
         }
 
         .loading {
@@ -381,7 +389,7 @@
             font-size: 11px;
         }
 
-        /* Player Card - WITH BINGO BUTTON EXTREMELY CLOSE */
+        /* Player Card */
         .player-card {
             background: #f8f9fa;
             border-radius: 10px;
@@ -538,6 +546,10 @@
         .status-banner.disqualified {
             background: #f44336;
         }
+
+        .status-banner.warning {
+            background: #ff9800;
+        }
     </style>
 </head>
 <body>
@@ -553,6 +565,7 @@
                 </div>
                 <span class="selection-subtitle">Select Card (1-400)</span>
             </div>
+            <div id="timerWarning" class="status-banner warning hidden">⏰ Time is running out! Select your card now.</div>
             <div class="loading" id="loadingCards">Loading available cards...</div>
             <div class="cards-grid" id="cardsGrid"></div>
         </div>
@@ -654,6 +667,7 @@
         let selectionTimer = 20;
         let timerInterval = null;
         let gameStarted = false;
+        let selectionEnded = false;
 
         // Initialize number board (column-wise)
         function initNumberBoard() {
@@ -703,12 +717,32 @@
                 const response = await fetch('/can_select');
                 const data = await response.json();
                 
-                if (!data.allowed && !gameStarted) {
-                    // Selection time ended, start game if card selected
+                if (!data.allowed && !gameStarted && !selectionEnded) {
+                    selectionEnded = true;
+                    
+                    // Update timer display to show expired
+                    const timerElement = document.getElementById('selectionTimer');
+                    if (timerElement) {
+                        timerElement.textContent = '0';
+                        timerElement.classList.add('expired');
+                    }
+                    
+                    // Disable all card buttons
+                    document.querySelectorAll('.card-btn').forEach(btn => {
+                        btn.classList.add('disabled');
+                        btn.disabled = true;
+                    });
+                    
+                    // Show warning
+                    const warning = document.getElementById('timerWarning');
+                    warning.textContent = '⏰ Selection time has ended!';
+                    warning.classList.remove('hidden');
+                    
+                    // If a card was selected, start the game
                     if (selectedCard) {
                         startGameAfterTimer();
                     } else {
-                        alert('Selection time ended! Please select a card faster next time.');
+                        alert('Selection time ended! No card selected.');
                     }
                 }
                 return data.allowed;
@@ -721,15 +755,65 @@
         // Start polling server for selection status
         function startSelectionStatusPoll() {
             const interval = setInterval(async () => {
-                const allowed = await checkSelectionAllowed();
-                if (!allowed && !gameStarted) {
+                if (selectionEnded || gameStarted) {
                     clearInterval(interval);
+                    return;
                 }
+                await checkSelectionAllowed();
             }, 1000);
         }
 
         // Start selection timer (UI only - actual timer is on server)
         function startSelectionTimer() {
+            // First, sync with server to get actual remaining time
+            fetch('/can_select')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.allowed) {
+                        selectionEnded = true;
+                        const timerElement = document.getElementById('selectionTimer');
+                        if (timerElement) {
+                            timerElement.textContent = '0';
+                            timerElement.classList.add('expired');
+                        }
+                        return;
+                    }
+                    
+                    // Start local countdown from 20
+                    selectionTimer = 20;
+                    updateTimerDisplay();
+                    
+                    timerInterval = setInterval(() => {
+                        selectionTimer--;
+                        updateTimerDisplay();
+                        
+                        // Show warning at 5 seconds
+                        if (selectionTimer === 5) {
+                            const warning = document.getElementById('timerWarning');
+                            warning.classList.remove('hidden');
+                        }
+                        
+                        if (selectionTimer <= 0) {
+                            clearInterval(timerInterval);
+                            timerInterval = null;
+                            selectionEnded = true;
+                            
+                            // Check with server if time is really up
+                            checkSelectionAllowed();
+                        }
+                    }, 1000);
+                    
+                    // Start polling server for actual selection status
+                    startSelectionStatusPoll();
+                })
+                .catch(err => {
+                    console.error('Error syncing timer:', err);
+                    // Fallback to local timer
+                    startLocalTimer();
+                });
+        }
+        
+        function startLocalTimer() {
             selectionTimer = 20;
             updateTimerDisplay();
             
@@ -737,19 +821,33 @@
                 selectionTimer--;
                 updateTimerDisplay();
                 
+                if (selectionTimer === 5) {
+                    const warning = document.getElementById('timerWarning');
+                    warning.classList.remove('hidden');
+                }
+                
                 if (selectionTimer <= 0) {
                     clearInterval(timerInterval);
                     timerInterval = null;
+                    selectionEnded = true;
+                    
+                    const timerElement = document.getElementById('selectionTimer');
+                    if (timerElement) {
+                        timerElement.classList.add('expired');
+                    }
+                    
+                    if (selectedCard) {
+                        startGameAfterTimer();
+                    } else {
+                        alert('Selection time ended! No card selected.');
+                    }
                 }
             }, 1000);
-            
-            // Start polling server for actual selection status
-            startSelectionStatusPoll();
         }
         
         function updateTimerDisplay() {
             const timerElement = document.getElementById('selectionTimer');
-            if (timerElement) {
+            if (timerElement && !selectionEnded) {
                 timerElement.textContent = selectionTimer;
                 
                 // Change color based on time remaining
@@ -780,11 +878,8 @@
 
         // Generate demo card (for testing without server)
         function generateDemoCard(cardNum) {
-            // Generate a valid card with proper column ranges but stored row-wise
             const card = new Array(25).fill(0);
             
-            // Generate numbers for each column first
-            const columns = [];
             for (let col = 0; col < 5; col++) {
                 const min = col * 15 + 1;
                 const max = min + 14;
@@ -797,26 +892,20 @@
                     }
                 }
                 numbers.sort((a, b) => a - b);
-                columns.push(numbers);
-            }
-            
-            // Store in row-major format (rows x columns)
-            for (let row = 0; row < 5; row++) {
-                for (let col = 0; col < 5; col++) {
+                
+                for (let row = 0; row < 5; row++) {
                     const index = row * 5 + col;
-                    card[index] = columns[col][row];
+                    card[index] = numbers[row];
                 }
             }
             
             return card;
         }
 
-        // FIX 1: Proper column-wise rendering with row-major data
         function renderBingoCard() {
             const grid = document.getElementById('bingo-grid');
             grid.innerHTML = '';
             
-            // Add header row
             const headerRow = document.createElement('div');
             headerRow.className = 'grid-row';
             ['B', 'I', 'N', 'G', 'O'].forEach(letter => {
@@ -827,9 +916,7 @@
             });
             grid.appendChild(headerRow);
             
-            // If card data exists, render it
             if (currentCard && currentCard.length === 25) {
-                // Create a 2D array from the flat row-major data
                 const card2D = [];
                 for (let row = 0; row < 5; row++) {
                     card2D[row] = [];
@@ -839,7 +926,6 @@
                     }
                 }
                 
-                // Render each row
                 for (let row = 0; row < 5; row++) {
                     const rowDiv = document.createElement('div');
                     rowDiv.className = 'grid-row';
@@ -861,17 +947,9 @@
                             const num = card2D[row][col];
                             cell.textContent = num;
                             
-                            // FIX 4: Allow marking ANY number (no check for called numbers)
-                            // Just mark/unmark on click
                             cell.onclick = function() {
                                 if (!gameActive || isDisqualified) return;
                                 
-                                if (isFreeSpace) {
-                                    // Free space is always marked
-                                    return;
-                                }
-                                
-                                // Toggle marked class
                                 if (this.classList.contains('marked')) {
                                     this.classList.remove('marked');
                                     markedNumbers.delete(num);
@@ -898,7 +976,6 @@
             }
         }
 
-        // Call bingo - check with server
         async function callBingo() {
             if (!gameActive || isDisqualified) return;
             
@@ -909,29 +986,24 @@
                     body: JSON.stringify({
                         user_id: userId,
                         room_id: roomId,
-                        card: currentCard,
                         marked: Array.from(markedNumbers)
                     })
                 });
                 
                 const result = await response.json();
                 
-                // FIX 5: Handle disqualification
                 if (result.status === 'disqualified') {
                     isDisqualified = true;
                     
-                    // Show status banner
                     const banner = document.getElementById('statusBanner');
                     banner.textContent = '❌ Wrong BINGO! You are disqualified for this game.';
                     banner.classList.add('disqualified');
                     banner.classList.remove('hidden');
                     
-                    // Disable the board
                     document.querySelectorAll('.player-cell').forEach(cell => {
                         cell.classList.add('disqualified');
                     });
                     
-                    // Disable bingo button
                     document.getElementById('bingo-btn').classList.add('disabled');
                     
                     alert('Wrong BINGO! You have been disqualified for this game.');
@@ -950,7 +1022,6 @@
             }
         }
 
-        // Load cards
         async function loadCards() {
             try {
                 let takenCardsData = [];
@@ -993,9 +1064,13 @@
             }
         }
 
-        // Select a card
         async function selectCard(cardNum) {
             // Check if selection is still allowed
+            if (selectionEnded) {
+                alert('Selection time has ended!');
+                return;
+            }
+            
             const allowed = await checkSelectionAllowed();
             if (!allowed) {
                 alert('Selection time has ended!');
@@ -1009,7 +1084,6 @@
             
             selectedCard = cardNum;
             
-            // Highlight selected card
             document.querySelectorAll('.card-btn').forEach(btn => {
                 btn.classList.remove('selected');
                 if (btn.dataset.cardNum == cardNum) {
@@ -1034,7 +1108,6 @@
                     if (response.ok) {
                         const result = await response.json();
                         if (result.success) {
-                            // Card comes from server in row-major order
                             cardData = result.game_state.card;
                         }
                     }
@@ -1046,7 +1119,6 @@
                     cardData = generateDemoCard(cardNum);
                 }
                 
-                // Store the card data
                 currentCard = cardData;
                 cardNumber = cardNum;
                 
@@ -1058,7 +1130,6 @@
             }
         }
 
-        // Update current call
         function updateCurrentCall() {
             if (calledNumbers.length === 0) {
                 document.getElementById('current-letter').textContent = '-';
@@ -1088,7 +1159,6 @@
             });
         }
 
-        // Add called number
         function addCalledNumber(num) {
             if (!calledNumbers.includes(num)) {
                 calledNumbers.push(num);
@@ -1103,16 +1173,13 @@
             }
         }
 
-        // Start game
         function startGame() {
-            // Update stats
             setInterval(() => {
                 const players = 382;
                 document.getElementById('player-count').textContent = players;
                 document.getElementById('derash').textContent = players * 10;
             }, 2000);
             
-            // Simulate number calls
             const gameInterval = setInterval(() => {
                 if (!gameActive) return;
                 
@@ -1127,7 +1194,6 @@
             }, 3000);
         }
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', loadCards);
     </script>
 </body>
