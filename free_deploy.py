@@ -1642,6 +1642,19 @@ async def bingo_game_redirect(request: Request):
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Bingo Game Page Not Found</h1><p>Please ensure bingo_game.html exists in the webapp folder.</p>", status_code=404)
 
+@app.get("/api/game/selected_count/{room_id}")
+async def get_selected_players_count(room_id: str):
+    """Get number of players who have selected cards"""
+    try:
+        count = 0
+        for key, game in games_data.items():
+            if game.get("room_id") == room_id and game.get("card_number"):
+                count += 1
+        return {"count": count}
+    except Exception as e:
+        logger.error(f"Error getting selected count: {e}")
+        return {"count": 0}
+        
 # ============= ADMIN API ENDPOINTS =============
 
 @app.post("/api/admin/login")
