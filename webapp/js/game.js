@@ -118,8 +118,8 @@ class BingoGame {
         });
         
         // Add numbers (5x5 grid)
-        for (let row = 0; row < 5; row++) {
-            for (let col = 0; col < 5; col++) {
+        for (let col = 0; col < 5; col++) {
+            for (let row = 0; row < 5; row++) {
                 const index = col * 5 + row;
                 const number = this.state.card[index];
                 
