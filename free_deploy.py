@@ -18,7 +18,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQuer
 import httpx
 import random
 from database import db
-import asyncpg
+import asyncio
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
