@@ -18,8 +18,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQuer
 import httpx
 import random
 from database import db
-import asyncio
-
+import asyncpg
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +108,9 @@ def selection_open():
 async def startup_event():
     """Initialize bot on startup"""
     global bot_app
+    # Initialize database connection pool
+    await db.init_pool()
+    
     if BOT_TOKEN:
         # Build bot application
         bot_app = Application.builder().token(BOT_TOKEN).build()
@@ -213,14 +215,6 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username=user.username,
             first_name=user.first_name,
             last_name=user.last_name
-        )
-        
-        # Add starting balance as deposit
-        await db.update_balance(
-            user_id=new_user.id if hasattr(new_user, 'id') else new_user.get('id'),
-            amount=STARTING_BALANCE,
-            transaction_type='deposit',
-            description='Welcome bonus'
         )
         
         logger.info(f"✅ New user registered in PostgreSQL: {user_id} with {STARTING_BALANCE} Birr bonus")
@@ -691,14 +685,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 last_name=user.last_name
             )
             
-            # Add starting balance
-            await db.update_balance(
-                user_id=new_user.id if hasattr(new_user, 'id') else new_user.get('id'),
-                amount=STARTING_BALANCE,
-                transaction_type='deposit',
-                description='Welcome bonus'
-            )
-            
             # Create main menu keyboard
             keyboard = [
                 [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
@@ -846,24 +832,30 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
             try:
                 # Process deposit in database
                 user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                await db.update_balance(
+                success = await db.update_balance(
                     user_id=user_id_val,
                     amount=int(amount),
                     transaction_type='deposit',
                     description=f'Deposit of {amount} Birr'
                 )
                 
-                # Get updated balance
-                updated_user = await db.get_user(user_id)
-                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                
-                await query.edit_message_text(
-                    f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
-                    f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{new_balance} Birr**\n\n"
-                    f"Thank you for your deposit!",
-                    parse_mode='Markdown'
-                )
+                if success:
+                    # Get updated balance
+                    updated_user = await db.get_user(user_id)
+                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                    
+                    await query.edit_message_text(
+                        f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
+                        f"Amount: **{amount} Birr**\n"
+                        f"New Balance: **{new_balance} Birr**\n\n"
+                        f"Thank you for your deposit!",
+                        parse_mode='Markdown'
+                    )
+                else:
+                    await query.edit_message_text(
+                        "❌ Deposit failed. Please try again.",
+                        parse_mode='Markdown'
+                    )
             except Exception as e:
                 logger.error(f"❌ Deposit error: {e}")
                 await query.edit_message_text(
@@ -1116,25 +1108,30 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount = int(text)
             if 10 <= amount <= 10000:
                 user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                await db.update_balance(
+                success = await db.update_balance(
                     user_id=user_id_val,
                     amount=amount,
                     transaction_type='deposit',
                     description=f'Deposit of {amount} Birr'
                 )
                 
-                # Get updated balance
-                updated_user = await db.get_user(user_id)
-                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                
-                await update.message.reply_text(
-                    f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
-                    f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{new_balance} Birr**\n\n"
-                    f"Thank you for your deposit!",
-                    parse_mode='Markdown'
-                )
-                context.user_data['awaiting_deposit'] = False
+                if success:
+                    # Get updated balance
+                    updated_user = await db.get_user(user_id)
+                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                    
+                    await update.message.reply_text(
+                        f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
+                        f"Amount: **{amount} Birr**\n"
+                        f"New Balance: **{new_balance} Birr**\n\n"
+                        f"Thank you for your deposit!",
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['awaiting_deposit'] = False
+                else:
+                    await update.message.reply_text(
+                        "❌ Deposit failed. Please try again."
+                    )
             else:
                 await update.message.reply_text(
                     "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
@@ -1160,26 +1157,31 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             else:
                 user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                await db.update_balance(
+                success = await db.update_balance(
                     user_id=user_id_val,
                     amount=-amount,
                     transaction_type='withdrawal',
                     description=f'Withdrawal request of {amount} Birr'
                 )
                 
-                # Get updated balance
-                updated_user = await db.get_user(user_id)
-                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                
-                await update.message.reply_text(
-                    f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
-                    f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{new_balance} Birr**\n"
-                    f"Processing Time: **24 hours**\n\n"
-                    f"You will be notified when your withdrawal is processed.",
-                    parse_mode='Markdown'
-                )
-                context.user_data['awaiting_withdraw'] = False
+                if success:
+                    # Get updated balance
+                    updated_user = await db.get_user(user_id)
+                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                    
+                    await update.message.reply_text(
+                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
+                        f"Amount: **{amount} Birr**\n"
+                        f"New Balance: **{new_balance} Birr**\n"
+                        f"Processing Time: **24 hours**\n\n"
+                        f"You will be notified when your withdrawal is processed.",
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['awaiting_withdraw'] = False
+                else:
+                    await update.message.reply_text(
+                        "❌ Withdrawal request failed. Please try again."
+                    )
         except ValueError:
             await update.message.reply_text(
                 "❌ Please enter a valid number."
@@ -1207,22 +1209,20 @@ async def root():
 async def test_database():
     """Test database connection"""
     try:
-        # Try to connect
-        async with db.async_session() as session:
-            result = await session.execute(text("SELECT 1"))
-            await session.commit()
+        # Check if pool exists and connection works
+        if db.pool is None:
+            return JSONResponse({
+                "status": "❌ Database not initialized",
+                "error": "Database pool not created"
+            }, status_code=500)
         
-        # Check if tables exist
-        async with db.async_session() as session:
-            tables = await session.execute(
-                text("SELECT tablename FROM pg_tables WHERE schemaname='public'")
-            )
-            tables_list = [row[0] for row in tables]
+        async with db.pool.acquire() as conn:
+            result = await conn.fetchval("SELECT 1")
         
         return JSONResponse({
             "status": "✅ Database connected!",
-            "tables": tables_list,
-            "message": "Your database is working and ready to store user data!"
+            "message": "Your database is working and ready to store user data!",
+            "result": result
         })
     except Exception as e:
         return JSONResponse({
@@ -1230,7 +1230,7 @@ async def test_database():
             "error": str(e)
         }, status_code=500)
 
-# ============= NEW: Global Timer and Bingo Check Endpoints =============
+# ============= Global Timer and Bingo Check Endpoints =============
 
 @app.post("/api/game/start_selection")
 async def api_start_selection():
@@ -1266,18 +1266,6 @@ async def check_bingo(request: Request):
         if marked_count >= 5:
             # Valid bingo - calculate prize
             prize = 100  # Placeholder prize amount
-            
-            # You could record win in database here if you want
-            # if user_id:
-            #     db_user = await db.get_user(user_id)
-            #     if db_user:
-            #         user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-            #         await db.update_balance(
-            #             user_id=user_id_val,
-            #             amount=prize,
-            #             transaction_type='win',
-            #             description='Bingo win'
-            #         )
             
             return {
                 "status": "win", 
@@ -1655,7 +1643,7 @@ async def get_selected_players_count(room_id: str):
     except Exception as e:
         logger.error(f"Error getting selected count: {e}")
         return {"count": 0}
-        
+
 # ============= ADMIN API ENDPOINTS =============
 
 @app.post("/api/admin/login")
@@ -1693,9 +1681,7 @@ async def admin_dashboard(auth: bool = Depends(verify_admin_token)):
     """Get admin dashboard stats"""
     try:
         # Get total users count from database
-        async with db.async_session() as session:
-            result = await session.execute(text("SELECT COUNT(*) FROM users"))
-            total_users = result.scalar()
+        total_users = await db.get_user_count()
         
         active_games = len([g for g in games_data.values() if g.get("status") == "active"])
         
@@ -1744,53 +1730,38 @@ async def admin_get_users(
     """Get all users with filters"""
     try:
         # Get users from database
-        async with db.async_session() as session:
-            query = "SELECT * FROM users"
-            if search:
-                query += f" WHERE first_name ILIKE '%{search}%' OR telegram_id LIKE '%{search}%'"
-            
-            if sort == "balance_desc":
-                query += " ORDER BY balance DESC"
-            elif sort == "balance_asc":
-                query += " ORDER BY balance ASC"
-            elif sort == "games_desc":
-                query += " ORDER BY games_played DESC"
-            elif sort == "wins_desc":
-                query += " ORDER BY games_won DESC"
-            elif sort == "joined_desc":
-                query += " ORDER BY created_at DESC"
-            
-            result = await session.execute(text(query))
-            rows = result.fetchall()
+        users_list = await db.get_all_users(limit=100, offset=0)
         
-        user_list = []
-        for row in rows:
-            user_list.append({
-                "id": row[1] if len(row) > 1 else str(row[0]),  # telegram_id
-                "username": row[2] if len(row) > 2 else '',
-                "first_name": row[3] if len(row) > 3 else '',
-                "balance": float(row[5]) if len(row) > 5 else 0,  # balance column
-                "games_played": row[8] if len(row) > 8 else 0,  # games_played
-                "games_won": row[9] if len(row) > 9 else 0,  # games_won
-                "total_deposits": float(row[6]) if len(row) > 6 else 0,  # total_deposits
-                "total_withdrawals": float(row[7]) if len(row) > 7 else 0,  # total_withdrawals
-                "is_banned": False,
-                "is_vip": False,
-                "last_seen": datetime.now().isoformat(),
-                "joined": row[13].isoformat() if len(row) > 13 and row[13] else datetime.now().isoformat()  # created_at
-            })
+        # Filter by search
+        filtered_users = []
+        for user in users_list:
+            if search:
+                if search.lower() in user.get('first_name', '').lower() or search in user.get('telegram_id', ''):
+                    filtered_users.append(user)
+            else:
+                filtered_users.append(user)
+        
+        # Sort users
+        if sort == "balance_desc":
+            filtered_users.sort(key=lambda x: x.get('balance', 0), reverse=True)
+        elif sort == "balance_asc":
+            filtered_users.sort(key=lambda x: x.get('balance', 0))
+        elif sort == "games_desc":
+            filtered_users.sort(key=lambda x: x.get('games_played', 0), reverse=True)
+        elif sort == "wins_desc":
+            filtered_users.sort(key=lambda x: x.get('games_won', 0), reverse=True)
+        elif sort == "joined_desc":
+            filtered_users.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         
         # Calculate stats
-        total_balance = sum(u['balance'] for u in user_list)
-        active_today = len(user_list)
-        new_today = len(user_list)
+        total_balance = sum(u.get('balance', 0) for u in filtered_users)
         
         return JSONResponse({
-            "total": len(user_list),
-            "activeToday": active_today,
-            "newToday": new_today,
+            "total": len(filtered_users),
+            "activeToday": len(filtered_users),
+            "newToday": len([u for u in filtered_users if u.get('created_at', '').startswith(datetime.now().strftime("%Y-%m-%d"))]),
             "totalBalance": total_balance,
-            "list": user_list[:50]  # Limit to 50 users
+            "list": filtered_users[:50]
         })
     except Exception as e:
         logger.error(f"Admin get users error: {e}")
@@ -1806,19 +1777,19 @@ async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token))
             return JSONResponse(status_code=404, content={"error": "User not found"})
         
         return JSONResponse({
-            "id": user.get("telegram_id", user_id) if isinstance(user, dict) else user.telegram_id,
-            "username": user.get("username") if isinstance(user, dict) else user.username,
-            "first_name": user.get("first_name") if isinstance(user, dict) else user.first_name,
-            "last_name": user.get("last_name") if isinstance(user, dict) else user.last_name,
-            "balance": float(user.get("balance", 0)) if isinstance(user, dict) else float(user.balance),
-            "games_played": user.get("games_played", 0) if isinstance(user, dict) else user.games_played,
-            "games_won": user.get("games_won", 0) if isinstance(user, dict) else user.games_won,
-            "total_deposits": float(user.get("total_deposits", 0)) if isinstance(user, dict) else float(user.total_deposits),
-            "total_withdrawals": float(user.get("total_withdrawals", 0)) if isinstance(user, dict) else float(user.total_withdrawals),
+            "id": user.get("telegram_id", user_id),
+            "username": user.get("username"),
+            "first_name": user.get("first_name"),
+            "last_name": user.get("last_name"),
+            "balance": float(user.get("balance", 0)),
+            "games_played": user.get("games_played", 0),
+            "games_won": user.get("games_won", 0),
+            "total_deposits": float(user.get("total_deposits", 0)),
+            "total_withdrawals": float(user.get("total_withdrawals", 0)),
             "is_banned": False,
             "is_vip": False,
-            "created_at": user.get("created_at", datetime.now().isoformat()) if isinstance(user, dict) else user.created_at.isoformat() if user.created_at else datetime.now().isoformat(),
-            "last_seen": user.get("last_seen", datetime.now().isoformat()) if isinstance(user, dict) else user.last_seen.isoformat() if user.last_seen else datetime.now().isoformat()
+            "created_at": user.get("created_at", datetime.now().isoformat()),
+            "last_seen": user.get("last_seen", datetime.now().isoformat())
         })
     except Exception as e:
         logger.error(f"Admin get user error: {e}")
@@ -1839,7 +1810,7 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         if not user:
             return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
         
-        current = user.get("balance", 0) if isinstance(user, dict) else user.balance
+        current = user.get("balance", 0)
         
         if type_op == "add":
             user_id_val = user.get("id") if isinstance(user, dict) else user.id
@@ -1860,7 +1831,6 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
                 description=f'Admin adjustment: {reason}'
             )
         elif type_op == "set":
-            # For set, we need to calculate difference
             diff = amount - current
             if diff > 0:
                 user_id_val = user.get("id") if isinstance(user, dict) else user.id
@@ -1881,7 +1851,7 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         
         # Get updated user
         updated_user = await db.get_user(user_id)
-        new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+        new_balance = updated_user.get("balance", 0)
         
         logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {new_balance} ({reason})")
         
@@ -1905,9 +1875,6 @@ async def admin_toggle_ban(request: Request, auth: bool = Depends(verify_admin_t
         if not user:
             return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
         
-        # Toggle ban in database (you'll need to add is_banned column if you want this)
-        # For now, we'll just return success
-        
         return JSONResponse({
             "success": True,
             "is_banned": False
@@ -1927,15 +1894,11 @@ async def admin_get_games(
     try:
         game_list = []
         for game_id, game in games_data.items():
-            # Filter by search
             if search and search not in game_id:
                 continue
-            
-            # Filter by status
             if status != "all" and game.get("status") != status:
                 continue
             
-            # Calculate duration
             duration = 0
             if game.get("started_at") and game.get("finished_at"):
                 start = datetime.fromisoformat(game["started_at"])
@@ -1946,7 +1909,7 @@ async def admin_get_games(
                 "game_id": game_id,
                 "room": game.get("room_id", "unknown"),
                 "status": game.get("status", "unknown"),
-                "players": 1,  # Placeholder
+                "players": 1,
                 "max_players": 400,
                 "prize_pool": game.get("prize_pool", 0),
                 "duration": duration,
@@ -1986,17 +1949,22 @@ async def admin_get_transactions(
 ):
     """Get transaction history"""
     try:
-        # This is a placeholder - you'd need to implement transaction logging
-        transactions = []
+        # Get all transactions
+        transactions = await db.get_all_transactions(limit=100, offset=0)
+        
+        # Filter by type
+        if type != "all":
+            transactions = [t for t in transactions if t.get('type') == type]
         
         # Calculate stats
-        today_deposits = 12500  # Placeholder
-        today_withdrawals = 3400
-        today_wins = 8700
-        net_revenue = 3800
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_deposits = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'deposit' and t.get('created_at', '').startswith(today))
+        today_withdrawals = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'withdrawal' and t.get('created_at', '').startswith(today))
+        today_wins = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'win' and t.get('created_at', '').startswith(today))
+        net_revenue = today_deposits - today_withdrawals
         
         return JSONResponse({
-            "transactions": transactions,
+            "transactions": transactions[:50],
             "todayDeposits": today_deposits,
             "todayWithdrawals": today_withdrawals,
             "todayWins": today_wins,
@@ -2016,10 +1984,7 @@ async def admin_broadcast(request: Request, auth: bool = Depends(verify_admin_to
         message = data.get("message")
         link = data.get("link", "")
         
-        # Get total users count
-        async with db.async_session() as session:
-            result = await session.execute(text("SELECT COUNT(*) FROM users"))
-            total_users = result.scalar()
+        total_users = await db.get_user_count()
         
         logger.info(f"Broadcast: {message_type} - {message}")
         
@@ -2099,12 +2064,7 @@ async def admin_logs(
 ):
     """Get audit logs"""
     try:
-        # Placeholder logs
-        logs = [
-            {"level": "info", "timestamp": datetime.now().isoformat(), "message": "User logged in", "user": "admin", "ip": "192.168.1.1"},
-            {"level": "warning", "timestamp": datetime.now().isoformat(), "message": "Large withdrawal", "user": "player123", "ip": "192.168.1.2"},
-            {"level": "info", "timestamp": datetime.now().isoformat(), "message": "Game started", "user": "system", "ip": "0.0.0.0"},
-        ]
+        logs = await db.get_audit_logs(limit=100)
         return JSONResponse(logs)
     except Exception as e:
         logger.error(f"Admin logs error: {e}")
@@ -2114,10 +2074,7 @@ async def admin_logs(
 async def admin_stats(auth: bool = Depends(verify_admin_token)):
     """Get real-time stats"""
     try:
-        async with db.async_session() as session:
-            result = await session.execute(text("SELECT COUNT(*) FROM users"))
-            total_users = result.scalar()
-        
+        total_users = await db.get_user_count()
         return JSONResponse({
             "totalUsers": total_users
         })
@@ -2147,24 +2104,21 @@ async def admin_export_users(auth: bool = Depends(verify_admin_token)):
         import csv
         from io import StringIO
         
-        # Get users from database
-        async with db.async_session() as session:
-            result = await session.execute(text("SELECT * FROM users"))
-            rows = result.fetchall()
+        users_list = await db.get_all_users(limit=1000, offset=0)
         
         output = StringIO()
         writer = csv.writer(output)
         writer.writerow(["User ID", "Username", "First Name", "Balance", "Games Played", "Wins", "Joined"])
         
-        for row in rows:
+        for user in users_list:
             writer.writerow([
-                row[1] if len(row) > 1 else '',  # telegram_id
-                row[2] if len(row) > 2 else '',  # username
-                row[3] if len(row) > 3 else '',  # first_name
-                float(row[5]) if len(row) > 5 else 0,  # balance
-                row[8] if len(row) > 8 else 0,  # games_played
-                row[9] if len(row) > 9 else 0,  # games_won
-                row[13].isoformat() if len(row) > 13 and row[13] else ''  # created_at
+                user.get('telegram_id', ''),
+                user.get('username', ''),
+                user.get('first_name', ''),
+                user.get('balance', 0),
+                user.get('games_played', 0),
+                user.get('games_won', 0),
+                user.get('created_at', '')[:10] if user.get('created_at') else ''
             ])
         
         return Response(
