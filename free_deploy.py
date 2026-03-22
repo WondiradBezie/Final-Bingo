@@ -47,6 +47,9 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koy
 # Starting balance for new users
 STARTING_BALANCE = 20  # 20 Birr for new registrations
 
+# Payment configuration
+PAYMENT_PHONE = "0948813201"
+
 # Create bot application
 bot_app = None
 
@@ -95,7 +98,6 @@ def start_selection_phase():
     """Start the global selection timer"""
     global selection_start_time
     selection_start_time = time.time()
-    # Clear disqualified players for new game
     disqualified_players.clear()
 
 def selection_open():
@@ -108,14 +110,11 @@ def selection_open():
 async def startup_event():
     """Initialize bot on startup"""
     global bot_app
-    # Initialize database connection pool
     await db.init_pool()
     
     if BOT_TOKEN:
-        # Build bot application
         bot_app = Application.builder().token(BOT_TOKEN).build()
         
-        # Add command handlers
         bot_app.add_handler(CommandHandler("start", start_command))
         bot_app.add_handler(CommandHandler("help", help_command))
         bot_app.add_handler(CommandHandler("play", play_command))
@@ -129,29 +128,21 @@ async def startup_event():
         bot_app.add_handler(CommandHandler("id", id_command))
         bot_app.add_handler(CommandHandler("register", register_command))
         
-        # Add callback query handler for inline buttons
         bot_app.add_handler(CallbackQueryHandler(button_callback))
-        
-        # Add message handler for text messages
         bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         
-        # Initialize bot
         await bot_app.initialize()
         logger.info("✅ Bot application initialized")
     else:
         logger.warning("⚠️ BOT_TOKEN not set, bot commands disabled")
 
-# Command handlers
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command - Main menu with all options"""
     user = update.effective_user
     user_id = str(user.id)
     
-    # Check if user exists in database, if not show register option
     existing_user = await db.get_user(user_id)
     
     if not existing_user:
-        # Create register keyboard
         keyboard = [
             [InlineKeyboardButton("📝 REGISTER NOW", callback_data="register")],
             [InlineKeyboardButton("❓ What is Joy Bingo?", callback_data="about")]
@@ -166,10 +157,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # If already registered, show main menu
     logger.info(f"User {user.id} (@{user.username}) started the bot")
     
-    # Create main menu keyboard with multiple buttons
     keyboard = [
         [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
         [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
@@ -195,11 +184,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /register command - Register new user with starting balance"""
     user = update.effective_user
     user_id = str(user.id)
     
-    # Check if user already exists in database
     existing_user = await db.get_user(user_id)
     if existing_user:
         await update.message.reply_text(
@@ -209,7 +196,6 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # Create user in PostgreSQL
         new_user = await db.create_user(
             telegram_id=user_id,
             username=user.username,
@@ -217,9 +203,8 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             last_name=user.last_name
         )
         
-        logger.info(f"✅ New user registered in PostgreSQL: {user_id} with {STARTING_BALANCE} Birr bonus")
+        logger.info(f"✅ New user registered: {user_id} with {STARTING_BALANCE} Birr bonus")
         
-        # Create main menu keyboard
         keyboard = [
             [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
             [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
@@ -251,7 +236,6 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle about command - Show info about Joy Bingo"""
     about_text = f"""
 🎮 **About Joy Bingo**
 ═══════════════════
@@ -262,7 +246,7 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 **Features:**
 • 🎯 Play classic bingo with 400 unique cards
 • 💰 **Get {STARTING_BALANCE} Birr free** when you register!
-• 💰 Deposit and withdraw funds
+• 💰 Deposit and withdraw funds via Telebirr or CBE Birr
 • 👤 View your profile and statistics
 • 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
@@ -273,6 +257,11 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 3. Select a card and start playing
 4. Mark numbers as they're called
 5. Get BINGO to win!
+
+**💳 Payment Methods:**
+• Telebirr: Send to {PAYMENT_PHONE}
+• CBE Birr: Send to {PAYMENT_PHONE}
+• After payment, send transaction ID to complete deposit
 
 **Fair Play:**
 • All games are verified
@@ -293,7 +282,6 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /help command"""
     help_text = f"""
 🎮 **JOY BINGO - HELP & COMMANDS**
 ═══════════════════════════
@@ -321,6 +309,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 **💰 DEPOSIT & WITHDRAW:**
 • Minimum deposit: 10 Birr
 • Minimum withdrawal: 50 Birr
+• Payment Methods: Telebirr / CBE Birr
+• Payment Number: `{PAYMENT_PHONE}`
 • Withdrawals processed within 24h
 
 **🏆 PRIZES:**
@@ -331,17 +321,13 @@ Need more help? Contact @admin
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /admin command - Get admin panel link"""
     user_id = str(update.effective_user.id)
     
-    # Check if user is admin
     if user_id not in [str(uid) for uid in ADMIN_IDS]:
         await update.message.reply_text("❌ You are not authorized to access the admin panel.")
         return
     
-    # Create a special button that opens admin panel
     keyboard = [[InlineKeyboardButton("🔐 Open Admin Panel", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/admin_login.html"))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -353,7 +339,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /id command - Show user their Telegram ID"""
     user = update.effective_user
     user_id = user.id
     await update.message.reply_text(
@@ -366,10 +351,8 @@ async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /play command - Direct link to game"""
     user_id = str(update.effective_user.id)
     
-    # Check if user is registered
     existing_user = await db.get_user(user_id)
     
     if not existing_user:
@@ -391,11 +374,9 @@ async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /balance command - Check balance"""
     user_id = str(update.effective_user.id)
     
     try:
-        # Get user from database
         user = await db.get_user(user_id)
         
         if not user:
@@ -440,10 +421,9 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /deposit command - Deposit funds"""
+    """Handle /deposit command - Deposit funds with payment options"""
     user_id = str(update.effective_user.id)
     
-    # Check if user is registered
     existing_user = await db.get_user(user_id)
     
     if not existing_user:
@@ -457,30 +437,29 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     keyboard = [
-        [InlineKeyboardButton("💳 10 Birr", callback_data="deposit_10"),
-         InlineKeyboardButton("💳 50 Birr", callback_data="deposit_50")],
-        [InlineKeyboardButton("💳 100 Birr", callback_data="deposit_100"),
-         InlineKeyboardButton("💳 500 Birr", callback_data="deposit_500")],
-        [InlineKeyboardButton("💳 1000 Birr", callback_data="deposit_1000"),
-         InlineKeyboardButton("💳 Other", callback_data="deposit_other")],
+        [InlineKeyboardButton("💳 Telebirr", callback_data="deposit_telebirr"),
+         InlineKeyboardButton("💳 CBE Birr", callback_data="deposit_cbe")],
+        [InlineKeyboardButton("📱 Send Money to", callback_data="payment_info"),
+         InlineKeyboardButton("ℹ️ Payment Instructions", callback_data="payment_instructions")],
+        [InlineKeyboardButton("✅ I've Made Payment", callback_data="payment_submitted")],
         [InlineKeyboardButton("◀️ Back", callback_data="balance")]
     ]
     
     await update.message.reply_text(
-        "📥 **DEPOSIT FUNDS**\n\n"
-        "Select amount to deposit:\n"
-        "• Minimum deposit: 10 Birr\n"
-        "• Maximum deposit: 10,000 Birr\n\n"
-        "Click an amount below to proceed:",
+        f"📥 **DEPOSIT FUNDS**\n\n"
+        f"Select your payment method:\n\n"
+        f"💳 **Telebirr** - Fast and secure\n"
+        f"💳 **CBE Birr** - Convenient mobile banking\n\n"
+        f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+        f"After sending payment, click 'I've Made Payment' to confirm.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
 
 async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /withdraw command - Withdraw funds"""
+    """Handle /withdraw command - Withdraw funds with payment options"""
     user_id = str(update.effective_user.id)
     
-    # Check if user is registered
     existing_user = await db.get_user(user_id)
     
     if not existing_user:
@@ -496,7 +475,9 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = existing_user.get("balance", 0) if isinstance(existing_user, dict) else existing_user.balance
     
     keyboard = [
-        [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
+        [InlineKeyboardButton("💳 Withdraw to Telebirr", callback_data="withdraw_telebirr"),
+         InlineKeyboardButton("💳 Withdraw to CBE Birr", callback_data="withdraw_cbe")],
+        [InlineKeyboardButton("📝 Withdrawal Instructions", callback_data="withdraw_instructions")],
         [InlineKeyboardButton("📋 Withdrawal History", callback_data="withdraw_history")],
         [InlineKeyboardButton("◀️ Back", callback_data="balance")]
     ]
@@ -504,19 +485,19 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📤 **WITHDRAW FUNDS**\n\n"
         f"Available Balance: **{balance} Birr**\n"
-        f"Minimum Withdrawal: **50 Birr**\n"
-        f"Processing Time: **24 hours**\n\n"
-        f"To request a withdrawal, click the button below:",
+        f"Minimum Withdrawal: **50 Birr**\n\n"
+        f"Select your preferred withdrawal method:\n\n"
+        f"💳 **Telebirr** - Receive directly to your Telebirr account\n"
+        f"💳 **CBE Birr** - Receive to your CBE Birr account\n\n"
+        f"📱 **Payment Number:** `{PAYMENT_PHONE}` for verification",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /profile command - View user profile"""
     user = update.effective_user
     user_id = str(user.id)
     
-    # Check if user is registered
     existing_user = await db.get_user(user_id)
     
     if not existing_user:
@@ -572,7 +553,6 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rules command - Game rules"""
     rules_text = """
 📋 **JOY BINGO - RULES**
 ══════════════════════
@@ -620,9 +600,7 @@ Good luck and have fun! 🎮
     )
 
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /leaderboard command - Top players"""
     try:
-        # Get leaderboard from database
         leaderboard_data = await db.get_leaderboard(days=30, limit=10)
         
         leaderboard_text = "🏆 **TOP PLAYERS**\n══════════════════\n\n"
@@ -655,9 +633,7 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode='Markdown'
         )
 
-# Callback handler for inline buttons
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button callbacks"""
     query = update.callback_query
     await query.answer()
     
@@ -665,9 +641,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     data = query.data
     
-    # Handle register callback
     if data == "register":
-        # Check if already registered
         existing_user = await db.get_user(user_id)
         if existing_user:
             await query.edit_message_text(
@@ -677,7 +651,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         try:
-            # Register the user with starting balance
             new_user = await db.create_user(
                 telegram_id=user_id,
                 username=user.username,
@@ -685,7 +658,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 last_name=user.last_name
             )
             
-            # Create main menu keyboard
             keyboard = [
                 [InlineKeyboardButton("🎮 PLAY BINGO", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
                 [InlineKeyboardButton("💰 My Balance", callback_data="balance"),
@@ -729,7 +701,7 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 **Features:**
 • 🎯 Play classic bingo with 400 unique cards
 • 💰 **Get {STARTING_BALANCE} Birr free** when you register!
-• 💰 Deposit and withdraw funds
+• 💰 Deposit and withdraw funds via Telebirr or CBE Birr
 • 👤 View your profile and statistics
 • 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
@@ -740,6 +712,11 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 3. Select a card and start playing
 4. Mark numbers as they're called
 5. Get BINGO to win!
+
+**💳 Payment Methods:**
+• Telebirr: Send to {PAYMENT_PHONE}
+• CBE Birr: Send to {PAYMENT_PHONE}
+• After payment, click "I've Made Payment" to complete deposit
 
 **Fair Play:**
 • All games are verified
@@ -759,10 +736,116 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         )
         return
     
+    # ============= PAYMENT HANDLERS =============
+    
+    if data == "payment_info":
+        await query.edit_message_text(
+            f"💳 **PAYMENT INFORMATION**\n\n"
+            f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+            f"**Supported Methods:**\n"
+            f"• Telebirr\n"
+            f"• CBE Birr\n\n"
+            f"**How to Deposit:**\n"
+            f"1. Open Telebirr or CBE Birr app\n"
+            f"2. Send the desired amount to `{PAYMENT_PHONE}`\n"
+            f"3. Note your transaction ID\n"
+            f"4. Click 'I've Made Payment' and enter your transaction ID\n"
+            f"5. Wait for confirmation (within 5 minutes)\n\n"
+            f"**Minimum Deposit:** 10 Birr\n"
+            f"**Maximum Deposit:** 10,000 Birr\n\n"
+            f"⚠️ Always include your Telegram username in the payment reference!",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if data == "payment_instructions":
+        await query.edit_message_text(
+            f"📋 **PAYMENT INSTRUCTIONS**\n\n"
+            f"**Telebirr Instructions:**\n"
+            f"1. Open Telebirr app\n"
+            f"2. Tap 'Send Money'\n"
+            f"3. Enter number: `{PAYMENT_PHONE}`\n"
+            f"4. Enter amount (10-10000 Birr)\n"
+            f"5. Add reference: Your Telegram username\n"
+            f"6. Confirm and send\n\n"
+            f"**CBE Birr Instructions:**\n"
+            f"1. Open CBE Birr app\n"
+            f"2. Tap 'Transfer'\n"
+            f"3. Enter recipient: `{PAYMENT_PHONE}`\n"
+            f"4. Enter amount\n"
+            f"5. Add note: Your Telegram username\n"
+            f"6. Confirm transfer\n\n"
+            f"After sending, click 'I've Made Payment' and provide your transaction ID.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if data == "payment_submitted":
+        await query.edit_message_text(
+            f"✅ **PAYMENT CONFIRMATION**\n\n"
+            f"Please send the following information:\n\n"
+            f"1️⃣ Transaction ID\n"
+            f"2️⃣ Amount sent\n"
+            f"3️⃣ Payment method (Telebirr/CBE Birr)\n\n"
+            f"Example: `TXN123456789 - 100 Birr - Telebirr`\n\n"
+            f"Send this information as a message, and our system will verify your payment.",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_payment_confirmation'] = True
+        return
+    
+    if data == "withdraw_telebirr":
+        await query.edit_message_text(
+            f"📤 **WITHDRAW TO TELEBIRR**\n\n"
+            f"Please send your withdrawal details:\n\n"
+            f"1️⃣ Amount (minimum 50 Birr)\n"
+            f"2️⃣ Your Telebirr phone number\n\n"
+            f"Example: `200 - 0912345678`\n\n"
+            f"Your withdrawal will be processed within 24 hours.",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_withdraw_telebirr'] = True
+        return
+    
+    if data == "withdraw_cbe":
+        await query.edit_message_text(
+            f"📤 **WITHDRAW TO CBE BIRR**\n\n"
+            f"Please send your withdrawal details:\n\n"
+            f"1️⃣ Amount (minimum 50 Birr)\n"
+            f"2️⃣ Your CBE Birr phone number\n\n"
+            f"Example: `200 - 0912345678`\n\n"
+            f"Your withdrawal will be processed within 24 hours.",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_withdraw_cbe'] = True
+        return
+    
+    if data == "withdraw_instructions":
+        await query.edit_message_text(
+            f"📋 **WITHDRAWAL INSTRUCTIONS**\n\n"
+            f"**To withdraw your winnings:**\n\n"
+            f"1. Minimum withdrawal: 50 Birr\n"
+            f"2. Choose your preferred method (Telebirr or CBE Birr)\n"
+            f"3. Enter your amount and phone number\n"
+            f"4. Your request will be processed within 24 hours\n"
+            f"5. You'll receive a confirmation when processed\n\n"
+            f"⚠️ Make sure your phone number is correct to avoid delays.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if data == "withdraw_history":
+        await query.edit_message_text(
+            f"📋 **WITHDRAWAL HISTORY**\n\n"
+            f"To view your withdrawal history, please check the admin panel or contact support.\n\n"
+            f"Recent withdrawals will appear here soon.",
+            parse_mode='Markdown'
+        )
+        return
+    
     # Get user from database for other callbacks
     db_user = await db.get_user(user_id)
     
-    # Ensure user exists for other callbacks
     if not db_user:
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -800,94 +883,58 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
     
     elif data == "deposit":
         keyboard = [
-            [InlineKeyboardButton("💳 10 Birr", callback_data="deposit_10"),
-             InlineKeyboardButton("💳 50 Birr", callback_data="deposit_50")],
-            [InlineKeyboardButton("💳 100 Birr", callback_data="deposit_100"),
-             InlineKeyboardButton("💳 500 Birr", callback_data="deposit_500")],
-            [InlineKeyboardButton("💳 1000 Birr", callback_data="deposit_1000"),
-             InlineKeyboardButton("💳 Other", callback_data="deposit_other")],
+            [InlineKeyboardButton("💳 Telebirr", callback_data="deposit_telebirr"),
+             InlineKeyboardButton("💳 CBE Birr", callback_data="deposit_cbe")],
+            [InlineKeyboardButton("📱 Send Money to", callback_data="payment_info"),
+             InlineKeyboardButton("ℹ️ Payment Instructions", callback_data="payment_instructions")],
+            [InlineKeyboardButton("✅ I've Made Payment", callback_data="payment_submitted")],
             [InlineKeyboardButton("◀️ Back", callback_data="balance")]
         ]
         await query.edit_message_text(
-            "📥 **DEPOSIT FUNDS**\n\n"
-            "Select amount to deposit:\n"
-            "• Minimum deposit: 10 Birr\n"
-            "• Maximum deposit: 10,000 Birr\n\n"
-            "Click an amount below to proceed:",
+            f"📥 **DEPOSIT FUNDS**\n\n"
+            f"Select your payment method:\n\n"
+            f"💳 **Telebirr** - Fast and secure\n"
+            f"💳 **CBE Birr** - Convenient mobile banking\n\n"
+            f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+            f"After sending payment, click 'I've Made Payment' to confirm.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
     
-    elif data.startswith("deposit_"):
-        amount = data.replace("deposit_", "")
-        if amount == "other":
-            await query.edit_message_text(
-                "📥 **CUSTOM DEPOSIT**\n\n"
-                "Please send the amount you want to deposit (10-10000 Birr):\n\n"
-                "Example: `500`",
-                parse_mode='Markdown'
-            )
-            context.user_data['awaiting_deposit'] = True
-        else:
-            try:
-                # Process deposit in database
-                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                success = await db.update_balance(
-                    user_id=user_id_val,
-                    amount=int(amount),
-                    transaction_type='deposit',
-                    description=f'Deposit of {amount} Birr'
-                )
-                
-                if success:
-                    # Get updated balance
-                    updated_user = await db.get_user(user_id)
-                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                    
-                    await query.edit_message_text(
-                        f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
-                        f"Amount: **{amount} Birr**\n"
-                        f"New Balance: **{new_balance} Birr**\n\n"
-                        f"Thank you for your deposit!",
-                        parse_mode='Markdown'
-                    )
-                else:
-                    await query.edit_message_text(
-                        "❌ Deposit failed. Please try again.",
-                        parse_mode='Markdown'
-                    )
-            except Exception as e:
-                logger.error(f"❌ Deposit error: {e}")
-                await query.edit_message_text(
-                    "❌ Deposit failed. Please try again.",
-                    parse_mode='Markdown'
-                )
-    
     elif data == "withdraw":
         balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
         keyboard = [
-            [InlineKeyboardButton("📤 Request Withdrawal", callback_data="withdraw_request")],
+            [InlineKeyboardButton("💳 Withdraw to Telebirr", callback_data="withdraw_telebirr"),
+             InlineKeyboardButton("💳 Withdraw to CBE Birr", callback_data="withdraw_cbe")],
+            [InlineKeyboardButton("📝 Withdrawal Instructions", callback_data="withdraw_instructions")],
             [InlineKeyboardButton("📋 Withdrawal History", callback_data="withdraw_history")],
             [InlineKeyboardButton("◀️ Back", callback_data="balance")]
         ]
         await query.edit_message_text(
             f"📤 **WITHDRAW FUNDS**\n\n"
             f"Available Balance: **{balance} Birr**\n"
-            f"Minimum Withdrawal: **50 Birr**\n"
-            f"Processing Time: **24 hours**\n\n"
-            f"To request a withdrawal, click the button below:",
+            f"Minimum Withdrawal: **50 Birr**\n\n"
+            f"Select your preferred withdrawal method:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
     
-    elif data == "withdraw_request":
-        await query.edit_message_text(
-            "📤 **WITHDRAWAL REQUEST**\n\n"
-            "Please send the amount you want to withdraw (minimum 50 Birr):\n\n"
-            "Example: `200`",
-            parse_mode='Markdown'
-        )
-        context.user_data['awaiting_withdraw'] = True
+    elif data.startswith("deposit_"):
+        amount = data.replace("deposit_", "")
+        if amount in ["telebirr", "cbe"]:
+            # Just a note, actual deposit will happen via payment confirmation
+            method = "Telebirr" if amount == "telebirr" else "CBE Birr"
+            await query.edit_message_text(
+                f"📥 **DEPOSIT via {method}**\n\n"
+                f"To complete your deposit:\n\n"
+                f"1. Open your {method} app\n"
+                f"2. Send the amount to `{PAYMENT_PHONE}`\n"
+                f"3. Include your Telegram username in reference\n"
+                f"4. Click 'I've Made Payment' and provide transaction ID\n\n"
+                f"Your balance will be updated after verification.",
+                parse_mode='Markdown'
+            )
+        return
     
     elif data == "profile":
         stats = db_user
@@ -1033,15 +1080,15 @@ Mark all numbers in a row, column, or diagonal to win!
         )
     
     elif data == "support":
-        support_text = """
+        support_text = f"""
 📞 **CONTACT SUPPORT**
 ══════════════════
 
 **How can we help you?**
 
 **Common Issues:**
-• Deposit problems
-• Withdrawal issues
+• Deposit problems - Provide transaction ID
+• Withdrawal issues - Check balance and phone number
 • Game questions
 • Technical support
 • Account issues
@@ -1051,7 +1098,9 @@ Mark all numbers in a row, column, or diagonal to win!
 • Telegram: @joybingo_support
 • Response time: 24 hours
 
-Please include your User ID when contacting support.
+**Payment Number:** `{PAYMENT_PHONE}`
+
+Please include your User ID and transaction ID when contacting support.
 """
         keyboard = [[InlineKeyboardButton("◀️ Back", callback_data="help")]]
         await query.edit_message_text(
@@ -1083,55 +1132,198 @@ Please include your User ID when contacting support.
             parse_mode='Markdown'
         )
 
-# Message handler for text messages
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages (for deposits/withdrawals)"""
     user_id = str(update.effective_user.id)
     text = update.message.text.strip()
     
-    # Check if user is registered for any action
     db_user = await db.get_user(user_id)
     
-    if not db_user and not (context.user_data.get('awaiting_deposit') or context.user_data.get('awaiting_withdraw')):
-        keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "❌ You need to register first!\n\n"
-            "Click the button below to register and get free 20 Birr:",
-            reply_markup=reply_markup
-        )
-        return
+    # Payment confirmation handler
+    if context.user_data.get('awaiting_payment_confirmation'):
+        try:
+            # Parse transaction details
+            parts = text.split(' - ')
+            if len(parts) >= 2:
+                transaction_id = parts[0]
+                amount = parts[1].split(' ')[0] if ' ' in parts[1] else parts[1]
+                method = parts[2] if len(parts) > 2 else "Unknown"
+                
+                # Here you would verify payment with your payment processor
+                # For now, we'll simulate verification
+                try:
+                    amount_num = int(amount)
+                    if 10 <= amount_num <= 10000:
+                        user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
+                        await db.update_balance(
+                            user_id=user_id_val,
+                            amount=amount_num,
+                            transaction_type='deposit',
+                            description=f'Payment {transaction_id} via {method}'
+                        )
+                        
+                        updated_user = await db.get_user(user_id)
+                        new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                        
+                        await update.message.reply_text(
+                            f"✅ **DEPOSIT CONFIRMED!**\n\n"
+                            f"Transaction ID: `{transaction_id}`\n"
+                            f"Amount: **{amount_num} Birr**\n"
+                            f"Payment Method: {method}\n"
+                            f"New Balance: **{new_balance} Birr**\n\n"
+                            f"Thank you for your deposit!",
+                            parse_mode='Markdown'
+                        )
+                        context.user_data['awaiting_payment_confirmation'] = False
+                    else:
+                        await update.message.reply_text(
+                            "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
+                        )
+                except ValueError:
+                    await update.message.reply_text(
+                        "❌ Invalid amount format. Please enter a valid number."
+                    )
+            else:
+                await update.message.reply_text(
+                    "❌ Please send in format: `TXN123456789 - 100 - Telebirr`\n\n"
+                    "Example: `TXN123456789 - 100 - Telebirr`",
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            logger.error(f"Payment confirmation error: {e}")
+            await update.message.reply_text(
+                "❌ Failed to process payment. Please try again or contact support."
+            )
     
-    # Check if we're awaiting a deposit amount
-    if context.user_data.get('awaiting_deposit'):
+    # Withdrawal to Telebirr handler
+    elif context.user_data.get('awaiting_withdraw_telebirr'):
+        try:
+            parts = text.split(' - ')
+            if len(parts) >= 2:
+                amount = int(parts[0])
+                phone = parts[1]
+                
+                balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
+                
+                if amount < 50:
+                    await update.message.reply_text(
+                        "❌ Minimum withdrawal amount is 50 Birr."
+                    )
+                elif amount > balance:
+                    await update.message.reply_text(
+                        f"❌ Insufficient balance. Your balance is {balance} Birr."
+                    )
+                else:
+                    user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
+                    await db.update_balance(
+                        user_id=user_id_val,
+                        amount=-amount,
+                        transaction_type='withdrawal',
+                        description=f'Withdrawal to Telebirr {phone}'
+                    )
+                    
+                    updated_user = await db.get_user(user_id)
+                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                    
+                    await update.message.reply_text(
+                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
+                        f"Amount: **{amount} Birr**\n"
+                        f"To: {phone} (Telebirr)\n"
+                        f"New Balance: **{new_balance} Birr**\n"
+                        f"Processing Time: **24 hours**\n\n"
+                        f"You will be notified when your withdrawal is processed.",
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['awaiting_withdraw_telebirr'] = False
+            else:
+                await update.message.reply_text(
+                    "❌ Please send in format: `200 - 0912345678`\n\n"
+                    "Example: `200 - 0912345678`",
+                    parse_mode='Markdown'
+                )
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Please enter a valid amount and phone number.\n\n"
+                "Format: `200 - 0912345678`",
+                parse_mode='Markdown'
+            )
+    
+    # Withdrawal to CBE Birr handler
+    elif context.user_data.get('awaiting_withdraw_cbe'):
+        try:
+            parts = text.split(' - ')
+            if len(parts) >= 2:
+                amount = int(parts[0])
+                phone = parts[1]
+                
+                balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
+                
+                if amount < 50:
+                    await update.message.reply_text(
+                        "❌ Minimum withdrawal amount is 50 Birr."
+                    )
+                elif amount > balance:
+                    await update.message.reply_text(
+                        f"❌ Insufficient balance. Your balance is {balance} Birr."
+                    )
+                else:
+                    user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
+                    await db.update_balance(
+                        user_id=user_id_val,
+                        amount=-amount,
+                        transaction_type='withdrawal',
+                        description=f'Withdrawal to CBE Birr {phone}'
+                    )
+                    
+                    updated_user = await db.get_user(user_id)
+                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                    
+                    await update.message.reply_text(
+                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
+                        f"Amount: **{amount} Birr**\n"
+                        f"To: {phone} (CBE Birr)\n"
+                        f"New Balance: **{new_balance} Birr**\n"
+                        f"Processing Time: **24 hours**\n\n"
+                        f"You will be notified when your withdrawal is processed.",
+                        parse_mode='Markdown'
+                    )
+                    context.user_data['awaiting_withdraw_cbe'] = False
+            else:
+                await update.message.reply_text(
+                    "❌ Please send in format: `200 - 0912345678`\n\n"
+                    "Example: `200 - 0912345678`",
+                    parse_mode='Markdown'
+                )
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Please enter a valid amount and phone number.\n\n"
+                "Format: `200 - 0912345678`",
+                parse_mode='Markdown'
+            )
+    
+    # Deposit amount handler (for other deposit options)
+    elif context.user_data.get('awaiting_deposit'):
         try:
             amount = int(text)
             if 10 <= amount <= 10000:
                 user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                success = await db.update_balance(
+                await db.update_balance(
                     user_id=user_id_val,
                     amount=amount,
                     transaction_type='deposit',
                     description=f'Deposit of {amount} Birr'
                 )
                 
-                if success:
-                    # Get updated balance
-                    updated_user = await db.get_user(user_id)
-                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                    
-                    await update.message.reply_text(
-                        f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
-                        f"Amount: **{amount} Birr**\n"
-                        f"New Balance: **{new_balance} Birr**\n\n"
-                        f"Thank you for your deposit!",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['awaiting_deposit'] = False
-                else:
-                    await update.message.reply_text(
-                        "❌ Deposit failed. Please try again."
-                    )
+                updated_user = await db.get_user(user_id)
+                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                
+                await update.message.reply_text(
+                    f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
+                    f"Amount: **{amount} Birr**\n"
+                    f"New Balance: **{new_balance} Birr**\n\n"
+                    f"Thank you for your deposit!",
+                    parse_mode='Markdown'
+                )
+                context.user_data['awaiting_deposit'] = False
             else:
                 await update.message.reply_text(
                     "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
@@ -1141,7 +1333,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Please enter a valid number."
             )
     
-    # Check if we're awaiting a withdrawal amount
+    # Withdrawal amount handler (for other withdrawal options)
     elif context.user_data.get('awaiting_withdraw'):
         try:
             amount = int(text)
@@ -1157,38 +1349,31 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             else:
                 user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                success = await db.update_balance(
+                await db.update_balance(
                     user_id=user_id_val,
                     amount=-amount,
                     transaction_type='withdrawal',
                     description=f'Withdrawal request of {amount} Birr'
                 )
                 
-                if success:
-                    # Get updated balance
-                    updated_user = await db.get_user(user_id)
-                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                    
-                    await update.message.reply_text(
-                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
-                        f"Amount: **{amount} Birr**\n"
-                        f"New Balance: **{new_balance} Birr**\n"
-                        f"Processing Time: **24 hours**\n\n"
-                        f"You will be notified when your withdrawal is processed.",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['awaiting_withdraw'] = False
-                else:
-                    await update.message.reply_text(
-                        "❌ Withdrawal request failed. Please try again."
-                    )
+                updated_user = await db.get_user(user_id)
+                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
+                
+                await update.message.reply_text(
+                    f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
+                    f"Amount: **{amount} Birr**\n"
+                    f"New Balance: **{new_balance} Birr**\n"
+                    f"Processing Time: **24 hours**\n\n"
+                    f"You will be notified when your withdrawal is processed.",
+                    parse_mode='Markdown'
+                )
+                context.user_data['awaiting_withdraw'] = False
         except ValueError:
             await update.message.reply_text(
                 "❌ Please enter a valid number."
             )
     
     else:
-        # If no context, show help
         await update.message.reply_text(
             "I don't understand that command. Use /help to see available commands."
         )
@@ -1204,12 +1389,9 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
-# Test database endpoint
 @app.get("/test-db")
 async def test_database():
-    """Test database connection"""
     try:
-        # Check if pool exists and connection works
         if db.pool is None:
             return JSONResponse({
                 "status": "❌ Database not initialized",
@@ -1234,49 +1416,37 @@ async def test_database():
 
 @app.post("/api/game/start_selection")
 async def api_start_selection():
-    """Start the selection phase for a new game"""
     start_selection_phase()
     return {"success": True, "message": "Selection phase started"}
 
 @app.get("/can_select")
 async def can_select():
-    """Check if players can still select cards"""
     return {"allowed": selection_open()}
 
 @app.post("/api/game/check_bingo")
 async def check_bingo(request: Request):
-    """Check if player has valid bingo and handle disqualification"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
         room_id = data.get("room_id")
         marked = data.get("marked", [])
         
-        # Check if player is already disqualified
         if user_id in disqualified_players:
             return {"status": "blocked", "message": "You are disqualified"}
         
-        # Simple bingo validation (check if they have 5 in a row/column/diag)
-        # Remove 'FREE' from marked list for counting
         marked_numbers = [m for m in marked if m != 'FREE']
         marked_count = len(marked_numbers)
         
-        # For demo, require at least 5 marked numbers for a win
-        # In production, you'd use your game engine to validate actual bingo
         if marked_count >= 5:
-            # Valid bingo - calculate prize
-            prize = 100  # Placeholder prize amount
-            
+            prize = 100
             return {
                 "status": "win", 
                 "prize": prize,
                 "message": "Congratulations! You win!"
             }
         else:
-            # Fake bingo - disqualify player
             disqualified_players.add(user_id)
             logger.warning(f"Player {user_id} disqualified for fake bingo with only {marked_count} marks")
-            
             return {
                 "status": "disqualified",
                 "message": "Wrong BINGO! You are disqualified for this game."
@@ -1289,9 +1459,7 @@ async def check_bingo(request: Request):
 # Webhook endpoint for Telegram
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
-    """Receive and process Telegram updates"""
     try:
-        # Get the update from Telegram
         update_data = await request.json()
         logger.info(f"📨 Received webhook update: {update_data.get('update_id', 'unknown')}")
         
@@ -1299,10 +1467,7 @@ async def telegram_webhook(request: Request):
             logger.error("❌ Bot application not initialized")
             return JSONResponse(status_code=200, content={"ok": False, "error": "Bot not initialized"})
         
-        # Create Update object and process it
         update = Update.de_json(update_data, bot_app.bot)
-        
-        # Process the update
         await bot_app.process_update(update)
         
         return {"ok": True, "message": "Update processed"}
@@ -1311,10 +1476,8 @@ async def telegram_webhook(request: Request):
         logger.error(f"❌ Webhook error: {e}")
         return JSONResponse(status_code=200, content={"ok": False, "error": str(e)})
 
-# GET handler for webhook (for testing)
 @app.get("/api/webhook")
 async def webhook_get():
-    """Handle GET requests for testing"""
     return {
         "message": "Webhook endpoint is active",
         "method": "GET",
@@ -1381,23 +1544,20 @@ rooms_data = {
 
 @app.get("/api/rooms")
 async def get_rooms():
-    """Get all active rooms"""
     return JSONResponse(list(rooms_data.values()))
 
 @app.get("/api/rooms/{room_id}")
 async def get_room(room_id: str):
-    """Get specific room"""
     if room_id in rooms_data:
         return JSONResponse(rooms_data[room_id])
     return JSONResponse({"error": "Room not found"}, status_code=404)
 
-# Game state storage (simple in-memory for now)
+# Game state storage
 games_data = {}
 player_sessions = {}
 
 @app.post("/api/rooms/{room_id}/join")
 async def join_room(room_id: str, request: Request):
-    """Join a specific room"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
@@ -1409,7 +1569,6 @@ async def join_room(room_id: str, request: Request):
                 content={"success": False, "error": "Room not found"}
             )
         
-        # Create a game session for this user
         session_id = f"{room_id}_{user_id}_{datetime.now().timestamp()}"
         player_sessions[user_id] = {
             "room_id": room_id,
@@ -1418,7 +1577,6 @@ async def join_room(room_id: str, request: Request):
             "username": username
         }
         
-        # Increment player count
         rooms_data[room_id]["players"] += 1
         
         return JSONResponse({
@@ -1437,7 +1595,6 @@ async def join_room(room_id: str, request: Request):
 
 @app.get("/api/game/state/{user_id}")
 async def get_game_state(user_id: str):
-    """Get current game state for a user"""
     if user_id in player_sessions:
         return JSONResponse({
             "success": True,
@@ -1454,7 +1611,6 @@ async def get_game_state(user_id: str):
 
 @app.post("/api/game/select_card")
 async def select_card(request: Request):
-    """Select a bingo card from pre-generated cards"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
@@ -1473,7 +1629,6 @@ async def select_card(request: Request):
                 content={"success": False, "error": f"Card #{card_number} not found"}
             )
         
-        # Check if card is already taken
         for key, game in games_data.items():
             if game.get("room_id") == room_id and game.get("card_number") == card_number:
                 return JSONResponse(
@@ -1519,7 +1674,6 @@ async def select_card(request: Request):
 
 @app.get("/api/game/taken_cards/{room_id}")
 async def get_taken_cards(room_id: str):
-    """Get list of taken card numbers in a room"""
     try:
         taken_cards = []
         for key, game in games_data.items():
@@ -1539,7 +1693,6 @@ async def get_taken_cards(room_id: str):
 
 @app.post("/api/game/mark_number")
 async def mark_number(request: Request):
-    """Mark a number on player's card"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
@@ -1575,7 +1728,6 @@ async def mark_number(request: Request):
 
 @app.post("/api/game/call_bingo")
 async def call_bingo(request: Request):
-    """Player calls bingo"""
     try:
         data = await request.json()
         user_id = data.get("user_id")
@@ -1613,7 +1765,6 @@ async def call_bingo(request: Request):
 
 @app.get("/api/leaderboard")
 async def get_leaderboard():
-    """Get top players leaderboard"""
     try:
         leaderboard_data = await db.get_leaderboard(days=30, limit=10)
         return JSONResponse(leaderboard_data)
@@ -1623,7 +1774,6 @@ async def get_leaderboard():
 
 @app.get("/bingo_game.html")
 async def bingo_game_redirect(request: Request):
-    """Serve the bingo game page"""
     try:
         with open("webapp/bingo_game.html", "r") as f:
             content = f.read()
@@ -1633,7 +1783,6 @@ async def bingo_game_redirect(request: Request):
 
 @app.get("/api/game/selected_count/{room_id}")
 async def get_selected_players_count(room_id: str):
-    """Get number of players who have selected cards"""
     try:
         count = 0
         for key, game in games_data.items():
@@ -1648,20 +1797,17 @@ async def get_selected_players_count(room_id: str):
 
 @app.post("/api/admin/login")
 async def admin_login(request: Request):
-    """Admin login - returns token if credentials are valid"""
     try:
         data = await request.json()
         password = data.get("password")
         user_id = data.get("user_id")
         
-        # Check if user is admin
         if not is_admin_user(user_id):
             return JSONResponse(
                 status_code=403,
                 content={"success": False, "error": "Not authorized"}
             )
         
-        # Check password (you should store this securely in env vars)
         if password == os.getenv("ADMIN_PASSWORD", "JoyBingo@2025Admin"):
             return JSONResponse({
                 "success": True,
@@ -1678,29 +1824,18 @@ async def admin_login(request: Request):
 
 @app.get("/api/admin/dashboard")
 async def admin_dashboard(auth: bool = Depends(verify_admin_token)):
-    """Get admin dashboard stats"""
     try:
-        # Get total users count from database
         total_users = await db.get_user_count()
-        
         active_games = len([g for g in games_data.values() if g.get("status") == "active"])
-        
-        # Calculate total volume (all time bets)
         total_volume = sum(g.get("total_bet", 0) for g in games_data.values())
+        total_commission = total_volume * 0.2
+        user_change = 12
         
-        # Calculate total commission
-        total_commission = total_volume * 0.2  # 20% commission
-        
-        # User growth (mock data for demo)
-        user_change = 12  # 12% growth
-        
-        # Revenue data for chart
         revenue = {
             "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "values": [1200, 1900, 1500, 2200, 2800, 3500, 4000]
         }
         
-        # Games history
         games_history = {
             "labels": ["12AM", "4AM", "8AM", "12PM", "4PM", "8PM"],
             "values": [3, 1, 4, 6, 8, 5]
@@ -1727,12 +1862,9 @@ async def admin_get_users(
     sort: str = "balance_desc",
     auth: bool = Depends(verify_admin_token)
 ):
-    """Get all users with filters"""
     try:
-        # Get users from database
         users_list = await db.get_all_users(limit=100, offset=0)
         
-        # Filter by search
         filtered_users = []
         for user in users_list:
             if search:
@@ -1741,7 +1873,6 @@ async def admin_get_users(
             else:
                 filtered_users.append(user)
         
-        # Sort users
         if sort == "balance_desc":
             filtered_users.sort(key=lambda x: x.get('balance', 0), reverse=True)
         elif sort == "balance_asc":
@@ -1750,10 +1881,7 @@ async def admin_get_users(
             filtered_users.sort(key=lambda x: x.get('games_played', 0), reverse=True)
         elif sort == "wins_desc":
             filtered_users.sort(key=lambda x: x.get('games_won', 0), reverse=True)
-        elif sort == "joined_desc":
-            filtered_users.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         
-        # Calculate stats
         total_balance = sum(u.get('balance', 0) for u in filtered_users)
         
         return JSONResponse({
@@ -1769,7 +1897,6 @@ async def admin_get_users(
 
 @app.get("/api/admin/users/{user_id}")
 async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token)):
-    """Get specific user details"""
     try:
         user = await db.get_user(user_id)
         
@@ -1797,12 +1924,11 @@ async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token))
 
 @app.post("/api/admin/adjust-balance")
 async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_admin_token)):
-    """Adjust user balance"""
     try:
         data = await request.json()
         user_id = data.get("userId")
         amount = float(data.get("amount"))
-        type_op = data.get("type")  # "add", "subtract", "set"
+        type_op = data.get("type")
         reason = data.get("reason", "")
         
         user = await db.get_user(user_id)
@@ -1849,7 +1975,6 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
                     description=f'Admin set balance to {amount}: {reason}'
                 )
         
-        # Get updated user
         updated_user = await db.get_user(user_id)
         new_balance = updated_user.get("balance", 0)
         
@@ -1865,7 +1990,6 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
 
 @app.post("/api/admin/toggle-ban")
 async def admin_toggle_ban(request: Request, auth: bool = Depends(verify_admin_token)):
-    """Ban/unban a user"""
     try:
         data = await request.json()
         user_id = data.get("userId")
@@ -1890,7 +2014,6 @@ async def admin_get_games(
     room: str = "all",
     auth: bool = Depends(verify_admin_token)
 ):
-    """Get all games with filters"""
     try:
         game_list = []
         for game_id, game in games_data.items():
@@ -1923,7 +2046,6 @@ async def admin_get_games(
 
 @app.post("/api/admin/end-game")
 async def admin_end_game(request: Request, auth: bool = Depends(verify_admin_token)):
-    """Force end a game"""
     try:
         data = await request.json()
         game_id = data.get("gameId")
@@ -1947,16 +2069,12 @@ async def admin_get_transactions(
     to_date: str = "",
     auth: bool = Depends(verify_admin_token)
 ):
-    """Get transaction history"""
     try:
-        # Get all transactions
         transactions = await db.get_all_transactions(limit=100, offset=0)
         
-        # Filter by type
         if type != "all":
             transactions = [t for t in transactions if t.get('type') == type]
         
-        # Calculate stats
         today = datetime.now().strftime("%Y-%m-%d")
         today_deposits = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'deposit' and t.get('created_at', '').startswith(today))
         today_withdrawals = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'withdrawal' and t.get('created_at', '').startswith(today))
@@ -1976,7 +2094,6 @@ async def admin_get_transactions(
 
 @app.post("/api/admin/broadcast")
 async def admin_broadcast(request: Request, auth: bool = Depends(verify_admin_token)):
-    """Send broadcast message to users"""
     try:
         data = await request.json()
         message_type = data.get("type")
@@ -1998,7 +2115,6 @@ async def admin_broadcast(request: Request, auth: bool = Depends(verify_admin_to
 
 @app.get("/api/admin/settings")
 async def admin_get_settings(auth: bool = Depends(verify_admin_token)):
-    """Get system settings"""
     try:
         return JSONResponse({
             "cardPrice": 10,
@@ -2026,7 +2142,6 @@ async def admin_get_settings(auth: bool = Depends(verify_admin_token)):
 
 @app.post("/api/admin/settings")
 async def admin_save_settings(request: Request, auth: bool = Depends(verify_admin_token)):
-    """Save system settings"""
     try:
         settings = await request.json()
         logger.info(f"Settings updated: {settings}")
@@ -2042,7 +2157,6 @@ async def admin_analytics(
     end: str = "",
     auth: bool = Depends(verify_admin_token)
 ):
-    """Get analytics data"""
     try:
         return JSONResponse({
             "arpdau": 45.50,
@@ -2062,7 +2176,6 @@ async def admin_logs(
     action: str = "all",
     auth: bool = Depends(verify_admin_token)
 ):
-    """Get audit logs"""
     try:
         logs = await db.get_audit_logs(limit=100)
         return JSONResponse(logs)
@@ -2072,7 +2185,6 @@ async def admin_logs(
 
 @app.get("/api/admin/stats")
 async def admin_stats(auth: bool = Depends(verify_admin_token)):
-    """Get real-time stats"""
     try:
         total_users = await db.get_user_count()
         return JSONResponse({
@@ -2084,7 +2196,6 @@ async def admin_stats(auth: bool = Depends(verify_admin_token)):
 
 @app.get("/api/admin/rooms")
 async def admin_rooms(auth: bool = Depends(verify_admin_token)):
-    """Get all rooms for admin"""
     try:
         rooms = [
             {"id": "classic", "name": "Classic Bingo"},
@@ -2099,7 +2210,6 @@ async def admin_rooms(auth: bool = Depends(verify_admin_token)):
 
 @app.get("/api/admin/export/users")
 async def admin_export_users(auth: bool = Depends(verify_admin_token)):
-    """Export users as CSV"""
     try:
         import csv
         from io import StringIO
