@@ -39,6 +39,7 @@ app.add_middleware(
 # Admin configuration
 ADMIN_IDS = [8576569079]  # Your Telegram user IDs
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", secrets.token_urlsafe(32))
+ADMIN_TELEGRAM_ID = 8576569079  # Admin Telegram ID to receive support messages
 
 # Initialize bot application
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -46,9 +47,6 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koy
 
 # Starting balance for new users
 STARTING_BALANCE = 20  # 20 Birr for new registrations
-
-# Payment configuration
-PAYMENT_PHONE = "0948813201"
 
 # Create bot application
 bot_app = None
@@ -123,7 +121,6 @@ async def startup_event():
         bot_app.add_handler(CommandHandler("withdraw", withdraw_command))
         bot_app.add_handler(CommandHandler("profile", profile_command))
         bot_app.add_handler(CommandHandler("rules", rules_command))
-        bot_app.add_handler(CommandHandler("leaderboard", leaderboard_command))
         bot_app.add_handler(CommandHandler("admin", admin_command))
         bot_app.add_handler(CommandHandler("id", id_command))
         bot_app.add_handler(CommandHandler("register", register_command))
@@ -165,8 +162,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
         [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
          InlineKeyboardButton("👤 My Profile", callback_data="profile")],
-        [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
-         InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+        [InlineKeyboardButton("📋 Game Rules", callback_data="rules")],
         [InlineKeyboardButton("❓ Help", callback_data="help"),
          InlineKeyboardButton("📞 Contact Support", callback_data="support")]
     ]
@@ -211,8 +207,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
             [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
              InlineKeyboardButton("👤 My Profile", callback_data="profile")],
-            [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
-             InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+            [InlineKeyboardButton("📋 Game Rules", callback_data="rules")],
             [InlineKeyboardButton("❓ Help", callback_data="help"),
              InlineKeyboardButton("📞 Contact Support", callback_data="support")]
         ]
@@ -248,7 +243,6 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 • 💰 **Get {STARTING_BALANCE} Birr free** when you register!
 • 💰 Deposit and withdraw funds via Telebirr or CBE Birr
 • 👤 View your profile and statistics
-• 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
 
 **How to Play:**
@@ -259,8 +253,8 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 5. Get BINGO to win!
 
 **💳 Payment Methods:**
-• Telebirr: Send to {PAYMENT_PHONE}
-• CBE Birr: Send to {PAYMENT_PHONE}
+• Telebirr: Send to 0948813201
+• CBE Birr: Send to 0948813201
 • After payment, send transaction ID to complete deposit
 
 **Fair Play:**
@@ -295,7 +289,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • `/withdraw` - Withdraw winnings
 • `/profile` - View your profile
 • `/rules` - Game rules
-• `/leaderboard` - Top players
 • `/help` - This help menu
 
 **🎯 HOW TO PLAY:**
@@ -310,7 +303,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Minimum deposit: 10 Birr
 • Minimum withdrawal: 50 Birr
 • Payment Methods: Telebirr / CBE Birr
-• Payment Number: `{PAYMENT_PHONE}`
+• Payment Number: `0948813201`
 • Withdrawals processed within 24h
 
 **🏆 PRIZES:**
@@ -450,7 +443,7 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Select your payment method:\n\n"
         f"💳 **Telebirr** - Fast and secure\n"
         f"💳 **CBE Birr** - Convenient mobile banking\n\n"
-        f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+        f"📱 **Payment Number:** `0948813201`\n\n"
         f"After sending payment, click 'I've Made Payment' to confirm.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -489,7 +482,7 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Select your preferred withdrawal method:\n\n"
         f"💳 **Telebirr** - Receive directly to your Telebirr account\n"
         f"💳 **CBE Birr** - Receive to your CBE Birr account\n\n"
-        f"📱 **Payment Number:** `{PAYMENT_PHONE}` for verification",
+        f"📱 **Payment Number:** `0948813201` for verification",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -599,40 +592,6 @@ Good luck and have fun! 🎮
         parse_mode='Markdown'
     )
 
-async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        leaderboard_data = await db.get_leaderboard(days=30, limit=10)
-        
-        leaderboard_text = "🏆 **TOP PLAYERS**\n══════════════════\n\n"
-        
-        if not leaderboard_data:
-            leaderboard_text += "No players yet. Be the first!\n"
-        else:
-            for i, entry in enumerate(leaderboard_data, 1):
-                name = entry.get('username', 'Unknown')[:10]
-                wins = entry.get('wins', 0)
-                winnings = entry.get('winnings', 0)
-                
-                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                leaderboard_text += f"{medal} **{name}** - {wins} wins ({winnings} Birr)\n"
-        
-        keyboard = [
-            [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
-            [InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]
-        ]
-        
-        await update.message.reply_text(
-            leaderboard_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        logger.error(f"❌ Error loading leaderboard: {e}")
-        await update.message.reply_text(
-            "❌ Error loading leaderboard. Please try again.",
-            parse_mode='Markdown'
-        )
-
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -664,8 +623,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
                 [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
                  InlineKeyboardButton("👤 My Profile", callback_data="profile")],
-                [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
-                 InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+                [InlineKeyboardButton("📋 Game Rules", callback_data="rules")],
                 [InlineKeyboardButton("❓ Help", callback_data="help"),
                  InlineKeyboardButton("📞 Contact Support", callback_data="support")]
             ]
@@ -703,7 +661,6 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 • 💰 **Get {STARTING_BALANCE} Birr free** when you register!
 • 💰 Deposit and withdraw funds via Telebirr or CBE Birr
 • 👤 View your profile and statistics
-• 🏆 Compete on the leaderboard
 • 🎮 Easy-to-use WebApp interface
 
 **How to Play:**
@@ -714,9 +671,9 @@ Joy Bingo is a fun and exciting Telegram-based bingo game where you can play wit
 5. Get BINGO to win!
 
 **💳 Payment Methods:**
-• Telebirr: Send to {PAYMENT_PHONE}
-• CBE Birr: Send to {PAYMENT_PHONE}
-• After payment, click "I've Made Payment" to complete deposit
+• Telebirr: Send to 0948813201
+• CBE Birr: Send to 0948813201
+• After payment, send transaction ID to complete deposit
 
 **Fair Play:**
 • All games are verified
@@ -741,13 +698,13 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
     if data == "payment_info":
         await query.edit_message_text(
             f"💳 **PAYMENT INFORMATION**\n\n"
-            f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+            f"📱 **Payment Number:** `0948813201`\n\n"
             f"**Supported Methods:**\n"
             f"• Telebirr\n"
             f"• CBE Birr\n\n"
             f"**How to Deposit:**\n"
             f"1. Open Telebirr or CBE Birr app\n"
-            f"2. Send the desired amount to `{PAYMENT_PHONE}`\n"
+            f"2. Send the desired amount to `0948813201`\n"
             f"3. Note your transaction ID\n"
             f"4. Click 'I've Made Payment' and enter your transaction ID\n"
             f"5. Wait for confirmation (within 5 minutes)\n\n"
@@ -764,14 +721,14 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
             f"**Telebirr Instructions:**\n"
             f"1. Open Telebirr app\n"
             f"2. Tap 'Send Money'\n"
-            f"3. Enter number: `{PAYMENT_PHONE}`\n"
+            f"3. Enter number: `0948813201`\n"
             f"4. Enter amount (10-10000 Birr)\n"
             f"5. Add reference: Your Telegram username\n"
             f"6. Confirm and send\n\n"
             f"**CBE Birr Instructions:**\n"
             f"1. Open CBE Birr app\n"
             f"2. Tap 'Transfer'\n"
-            f"3. Enter recipient: `{PAYMENT_PHONE}`\n"
+            f"3. Enter recipient: `0948813201`\n"
             f"4. Enter amount\n"
             f"5. Add note: Your Telegram username\n"
             f"6. Confirm transfer\n\n"
@@ -895,7 +852,7 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
             f"Select your payment method:\n\n"
             f"💳 **Telebirr** - Fast and secure\n"
             f"💳 **CBE Birr** - Convenient mobile banking\n\n"
-            f"📱 **Payment Number:** `{PAYMENT_PHONE}`\n\n"
+            f"📱 **Payment Number:** `0948813201`\n\n"
             f"After sending payment, click 'I've Made Payment' to confirm.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
@@ -922,13 +879,12 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
     elif data.startswith("deposit_"):
         amount = data.replace("deposit_", "")
         if amount in ["telebirr", "cbe"]:
-            # Just a note, actual deposit will happen via payment confirmation
             method = "Telebirr" if amount == "telebirr" else "CBE Birr"
             await query.edit_message_text(
                 f"📥 **DEPOSIT via {method}**\n\n"
                 f"To complete your deposit:\n\n"
                 f"1. Open your {method} app\n"
-                f"2. Send the amount to `{PAYMENT_PHONE}`\n"
+                f"2. Send the amount to `0948813201`\n"
                 f"3. Include your Telegram username in reference\n"
                 f"4. Click 'I've Made Payment' and provide transaction ID\n\n"
                 f"Your balance will be updated after verification.",
@@ -1016,40 +972,6 @@ Mark all numbers in a row, column, or diagonal to win!
             parse_mode='Markdown'
         )
     
-    elif data == "leaderboard":
-        try:
-            leaderboard_data = await db.get_leaderboard(days=30, limit=10)
-            
-            leaderboard_text = "🏆 **TOP PLAYERS**\n══════════════════\n\n"
-            
-            if not leaderboard_data:
-                leaderboard_text += "No players yet. Be the first!\n"
-            else:
-                for i, entry in enumerate(leaderboard_data, 1):
-                    name = entry.get('username', 'Unknown')[:10]
-                    wins = entry.get('wins', 0)
-                    winnings = entry.get('winnings', 0)
-                    
-                    medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                    leaderboard_text += f"{medal} **{name}** - {wins} wins ({winnings} Birr)\n"
-            
-            keyboard = [
-                [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=f"{WEBAPP_URL}/webapp/lobby.html"))],
-                [InlineKeyboardButton("🔄 Refresh", callback_data="leaderboard")]
-            ]
-            
-            await query.edit_message_text(
-                leaderboard_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logger.error(f"❌ Leaderboard error: {e}")
-            await query.edit_message_text(
-                "❌ Error loading leaderboard.",
-                parse_mode='Markdown'
-            )
-    
     elif data == "help":
         help_text = """
 🎮 **JOY BINGO - HELP**
@@ -1063,7 +985,6 @@ Mark all numbers in a row, column, or diagonal to win!
 • /withdraw - Withdraw
 • /profile - Your stats
 • /rules - Game rules
-• /leaderboard - Top players
 • /help - This menu
 
 **SUPPORT:**
@@ -1098,16 +1019,31 @@ Mark all numbers in a row, column, or diagonal to win!
 • Telegram: @joybingo_support
 • Response time: 24 hours
 
-**Payment Number:** `{PAYMENT_PHONE}`
+**Payment Number:** `0948813201`
 
 Please include your User ID and transaction ID when contacting support.
 """
-        keyboard = [[InlineKeyboardButton("◀️ Back", callback_data="help")]]
+        keyboard = [[InlineKeyboardButton("📝 Send Message", callback_data="send_support_message")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await query.edit_message_text(
             support_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=reply_markup,
             parse_mode='Markdown'
         )
+    
+    elif data == "send_support_message":
+        await query.edit_message_text(
+            f"📝 **SEND MESSAGE TO SUPPORT**\n\n"
+            f"Please write your message below.\n\n"
+            f"Include details about your issue:\n"
+            f"• For deposits: transaction ID, amount, method\n"
+            f"• For withdrawals: amount, phone number\n"
+            f"• For game issues: describe the problem\n\n"
+            f"Your message will be sent directly to admin.",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_support_message'] = True
     
     elif data == "back_to_menu":
         balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
@@ -1118,10 +1054,9 @@ Please include your User ID and transaction ID when contacting support.
              InlineKeyboardButton("📥 Deposit", callback_data="deposit")],
             [InlineKeyboardButton("📤 Withdraw", callback_data="withdraw"),
              InlineKeyboardButton("👤 My Profile", callback_data="profile")],
-            [InlineKeyboardButton("📋 Game Rules", callback_data="rules"),
-             InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+            [InlineKeyboardButton("📋 Game Rules", callback_data="rules")],
             [InlineKeyboardButton("❓ Help", callback_data="help"),
-             InlineKeyboardButton("📞 Support", callback_data="support")]
+             InlineKeyboardButton("📞 Contact Support", callback_data="support")]
         ]
         
         await query.edit_message_text(
@@ -1135,21 +1070,68 @@ Please include your User ID and transaction ID when contacting support.
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text.strip()
+    user = update.effective_user
     
     db_user = await db.get_user(user_id)
+    
+    # Support message handler - forward to admin
+    if context.user_data.get('awaiting_support_message'):
+        # Forward message to admin
+        admin_id = ADMIN_TELEGRAM_ID
+        
+        support_message = f"""
+📞 **SUPPORT MESSAGE FROM USER**
+
+👤 **User Info:**
+• ID: `{user_id}`
+• Username: @{user.username or 'N/A'}
+• Name: {user.first_name} {user.last_name or ''}
+
+💰 **User Balance:** {db_user.get('balance', 0) if db_user else 'N/A'} Birr
+
+📝 **Message:**
+{text}
+
+⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+Reply to this user by sending /reply_{user_id} [your message]
+"""
+        
+        try:
+            await bot_app.bot.send_message(
+                chat_id=admin_id,
+                text=support_message,
+                parse_mode='Markdown'
+            )
+            
+            await update.message.reply_text(
+                f"✅ **Message Sent!**\n\n"
+                f"Your message has been sent to support.\n"
+                f"We will get back to you within 24 hours.\n\n"
+                f"Please keep your User ID: `{user_id}` for reference.",
+                parse_mode='Markdown'
+            )
+            context.user_data['awaiting_support_message'] = False
+            
+        except Exception as e:
+            logger.error(f"Failed to send support message: {e}")
+            await update.message.reply_text(
+                "❌ Failed to send message. Please try again later or contact @joybingo_support directly.",
+                parse_mode='Markdown'
+            )
+        return
     
     # Payment confirmation handler
     if context.user_data.get('awaiting_payment_confirmation'):
         try:
-            # Parse transaction details
             parts = text.split(' - ')
             if len(parts) >= 2:
                 transaction_id = parts[0]
-                amount = parts[1].split(' ')[0] if ' ' in parts[1] else parts[1]
+                amount_part = parts[1]
+                amount = ''.join(filter(str.isdigit, amount_part))
                 method = parts[2] if len(parts) > 2 else "Unknown"
                 
-                # Here you would verify payment with your payment processor
-                # For now, we'll simulate verification
                 try:
                     amount_num = int(amount)
                     if 10 <= amount_num <= 10000:
@@ -1174,6 +1156,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             parse_mode='Markdown'
                         )
                         context.user_data['awaiting_payment_confirmation'] = False
+                        
+                        # Notify admin about deposit
+                        admin_msg = f"""
+💰 **DEPOSIT NOTIFICATION**
+
+👤 User: @{user.username or user.first_name}
+🆔 ID: `{user_id}`
+💳 Method: {method}
+📊 Amount: {amount_num} Birr
+🔑 TXN: {transaction_id}
+✅ Status: Completed
+⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+                        try:
+                            await bot_app.bot.send_message(
+                                chat_id=ADMIN_TELEGRAM_ID,
+                                text=admin_msg,
+                                parse_mode='Markdown'
+                            )
+                        except:
+                            pass
+                            
                     else:
                         await update.message.reply_text(
                             "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
@@ -1234,6 +1238,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode='Markdown'
                     )
                     context.user_data['awaiting_withdraw_telebirr'] = False
+                    
+                    # Notify admin about withdrawal request
+                    admin_msg = f"""
+📤 **WITHDRAWAL REQUEST**
+
+👤 User: @{user.username or user.first_name}
+🆔 ID: `{user_id}`
+💳 Method: Telebirr
+📞 Phone: {phone}
+📊 Amount: {amount} Birr
+💰 New Balance: {new_balance} Birr
+⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=ADMIN_TELEGRAM_ID,
+                            text=admin_msg,
+                            parse_mode='Markdown'
+                        )
+                    except:
+                        pass
+                        
             else:
                 await update.message.reply_text(
                     "❌ Please send in format: `200 - 0912345678`\n\n"
@@ -1287,6 +1313,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode='Markdown'
                     )
                     context.user_data['awaiting_withdraw_cbe'] = False
+                    
+                    # Notify admin about withdrawal request
+                    admin_msg = f"""
+📤 **WITHDRAWAL REQUEST**
+
+👤 User: @{user.username or user.first_name}
+🆔 ID: `{user_id}`
+💳 Method: CBE Birr
+📞 Phone: {phone}
+📊 Amount: {amount} Birr
+💰 New Balance: {new_balance} Birr
+⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=ADMIN_TELEGRAM_ID,
+                            text=admin_msg,
+                            parse_mode='Markdown'
+                        )
+                    except:
+                        pass
+                        
             else:
                 await update.message.reply_text(
                     "❌ Please send in format: `200 - 0912345678`\n\n"
@@ -1765,12 +1813,7 @@ async def call_bingo(request: Request):
 
 @app.get("/api/leaderboard")
 async def get_leaderboard():
-    try:
-        leaderboard_data = await db.get_leaderboard(days=30, limit=10)
-        return JSONResponse(leaderboard_data)
-    except Exception as e:
-        logger.error(f"Error getting leaderboard: {e}")
-        return JSONResponse([])
+    return JSONResponse([])
 
 @app.get("/bingo_game.html")
 async def bingo_game_redirect(request: Request):
