@@ -1,15 +1,15 @@
-# database.py
+# database.py - COMPLETE FIXED VERSION with Atomic Transactions
 import asyncpg
 import os
 from datetime import datetime, timedelta
 import logging
 from typing import Optional, List, Dict, Any
 import json
+import asyncio
 
 logger = logging.getLogger(__name__)
 
-# Get database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://bingo:secure_password@localhost/bingo")
 
 class DatabaseManager:
     def __init__(self):
@@ -17,173 +17,226 @@ class DatabaseManager:
         self.initialized = False
     
     async def init_pool(self):
-        """Initialize database connection pool"""
+        """Initialize database connection pool with retry"""
         try:
             if not DATABASE_URL:
-                logger.error("❌ DATABASE_URL not set in environment variables")
+                logger.error("❌ DATABASE_URL not set")
                 return False
             
-            self.pool = await asyncpg.create_pool(
-                DATABASE_URL,
-                min_size=1,
-                max_size=10,
-                command_timeout=60
-            )
-            self.initialized = True
-            logger.info("✅ Database connection pool initialized")
-            
-            # Create tables if they don't exist
-            await self.create_tables()
-            return True
+            # Try to connect with retries
+            for attempt in range(3):
+                try:
+                    self.pool = await asyncpg.create_pool(
+                        DATABASE_URL,
+                        min_size=2,
+                        max_size=20,
+                        command_timeout=60,
+                        max_inactive_connection_lifetime=300
+                    )
+                    self.initialized = True
+                    logger.info("✅ Database connection pool initialized")
+                    
+                    await self.create_tables()
+                    return True
+                except Exception as e:
+                    logger.warning(f"Database connection attempt {attempt + 1} failed: {e}")
+                    if attempt < 2:
+                        await asyncio.sleep(2)
+                    else:
+                        raise
+            return False
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize database: {e}")
             return False
     
     async def create_tables(self):
-        """Create all necessary tables if they don't exist"""
+        """Create all necessary tables with proper indexes"""
         try:
             async with self.pool.acquire() as conn:
-                # Users table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id SERIAL PRIMARY KEY,
-                        telegram_id TEXT UNIQUE NOT NULL,
-                        username TEXT,
-                        first_name TEXT,
-                        last_name TEXT,
-                        balance DECIMAL(12,2) DEFAULT 0,
-                        total_deposits DECIMAL(12,2) DEFAULT 0,
-                        total_withdrawals DECIMAL(12,2) DEFAULT 0,
-                        total_wins DECIMAL(12,2) DEFAULT 0,
-                        games_played INTEGER DEFAULT 0,
-                        games_won INTEGER DEFAULT 0,
-                        bingos_called INTEGER DEFAULT 0,
-                        is_active BOOLEAN DEFAULT TRUE,
-                        is_admin BOOLEAN DEFAULT FALSE,
-                        is_banned BOOLEAN DEFAULT FALSE,
-                        is_vip BOOLEAN DEFAULT FALSE,
-                        referral_code TEXT,
-                        referred_by TEXT,
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        last_seen TIMESTAMP DEFAULT NOW(),
-                        last_game TIMESTAMP
-                    )
-                """)
-                
-                # Transactions table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS transactions (
-                        id SERIAL PRIMARY KEY,
-                        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                        type TEXT NOT NULL,
-                        amount DECIMAL(12,2) NOT NULL,
-                        balance_after DECIMAL(12,2) NOT NULL,
-                        status TEXT DEFAULT 'completed',
-                        reference TEXT,
-                        description TEXT,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Games table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS games (
-                        id SERIAL PRIMARY KEY,
-                        game_id TEXT UNIQUE NOT NULL,
-                        room_id TEXT NOT NULL,
-                        status TEXT DEFAULT 'waiting',
-                        card_price DECIMAL(10,2) DEFAULT 10,
-                        prize_percentage INTEGER DEFAULT 80,
-                        min_players INTEGER DEFAULT 2,
-                        max_players INTEGER DEFAULT 400,
-                        called_numbers JSONB DEFAULT '[]',
-                        winners JSONB DEFAULT '[]',
-                        total_bet DECIMAL(12,2) DEFAULT 0,
-                        prize_pool DECIMAL(12,2) DEFAULT 0,
-                        commission DECIMAL(12,2) DEFAULT 0,
-                        created_at TIMESTAMP DEFAULT NOW(),
-                        started_at TIMESTAMP,
-                        finished_at TIMESTAMP
-                    )
-                """)
-                
-                # Game Players table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS game_players (
-                        id SERIAL PRIMARY KEY,
-                        game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
-                        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                        card_number TEXT,
-                        card_data JSONB,
-                        marked_numbers JSONB DEFAULT '[]',
-                        bingo_called BOOLEAN DEFAULT FALSE,
-                        bingo_time TIMESTAMP,
-                        win_amount DECIMAL(10,2) DEFAULT 0,
-                        is_winner BOOLEAN DEFAULT FALSE,
-                        joined_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Rooms table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS rooms (
-                        id SERIAL PRIMARY KEY,
-                        room_id TEXT UNIQUE NOT NULL,
-                        name TEXT NOT NULL,
-                        description TEXT,
-                        card_price DECIMAL(10,2),
-                        prize_percentage INTEGER,
-                        call_interval FLOAT DEFAULT 2.0,
-                        selection_time INTEGER DEFAULT 20,
-                        is_active BOOLEAN DEFAULT TRUE,
-                        current_game_id TEXT,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Audit logs table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS audit_logs (
-                        id SERIAL PRIMARY KEY,
-                        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                        action TEXT NOT NULL,
-                        details JSONB,
-                        ip_address TEXT,
-                        user_agent TEXT,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Withdrawal requests table
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS withdrawal_requests (
-                        id SERIAL PRIMARY KEY,
-                        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                        amount DECIMAL(12,2) NOT NULL,
-                        status TEXT DEFAULT 'pending',
-                        payment_method TEXT,
-                        payment_details TEXT,
-                        processed_by INTEGER REFERENCES users(id),
-                        processed_at TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """)
-                
-                # Create indexes for better performance
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance DESC)")
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC)")
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_games_status ON games(status)")
-                await conn.execute("CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status)")
-                
-                logger.info("✅ Database tables created/verified")
+                async with conn.transaction():
+                    # Users table with constraints
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id SERIAL PRIMARY KEY,
+                            telegram_id TEXT UNIQUE NOT NULL,
+                            username TEXT,
+                            first_name TEXT,
+                            last_name TEXT,
+                            balance DECIMAL(12,2) DEFAULT 0 CHECK (balance >= 0),
+                            total_deposits DECIMAL(12,2) DEFAULT 0,
+                            total_withdrawals DECIMAL(12,2) DEFAULT 0,
+                            total_wins DECIMAL(12,2) DEFAULT 0,
+                            games_played INTEGER DEFAULT 0,
+                            games_won INTEGER DEFAULT 0,
+                            bingos_called INTEGER DEFAULT 0,
+                            is_active BOOLEAN DEFAULT TRUE,
+                            is_admin BOOLEAN DEFAULT FALSE,
+                            is_banned BOOLEAN DEFAULT FALSE,
+                            is_vip BOOLEAN DEFAULT FALSE,
+                            referral_code TEXT,
+                            referred_by TEXT,
+                            created_at TIMESTAMP DEFAULT NOW(),
+                            last_seen TIMESTAMP DEFAULT NOW(),
+                            last_game TIMESTAMP
+                        )
+                    """)
+                    
+                    # Transactions table with atomic logging
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS transactions (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                            type TEXT NOT NULL CHECK (type IN ('deposit', 'withdrawal', 'bet', 'win', 'refund', 'welcome_bonus', 'admin_deposit', 'admin_withdrawal', 'withdrawal_pending')),
+                            amount DECIMAL(12,2) NOT NULL,
+                            balance_after DECIMAL(12,2) NOT NULL,
+                            status TEXT DEFAULT 'completed',
+                            reference TEXT,
+                            description TEXT,
+                            created_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    
+                    # Games table with indexes
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS games (
+                            id SERIAL PRIMARY KEY,
+                            game_id TEXT UNIQUE NOT NULL,
+                            room_id TEXT NOT NULL,
+                            status TEXT DEFAULT 'waiting',
+                            card_price DECIMAL(10,2) DEFAULT 10,
+                            prize_percentage INTEGER DEFAULT 80,
+                            min_players INTEGER DEFAULT 2,
+                            max_players INTEGER DEFAULT 400,
+                            called_numbers JSONB DEFAULT '[]',
+                            winners JSONB DEFAULT '[]',
+                            total_bet DECIMAL(12,2) DEFAULT 0,
+                            prize_pool DECIMAL(12,2) DEFAULT 0,
+                            commission DECIMAL(12,2) DEFAULT 0,
+                            server_seed TEXT,
+                            game_hash TEXT,
+                            created_at TIMESTAMP DEFAULT NOW(),
+                            started_at TIMESTAMP,
+                            finished_at TIMESTAMP
+                        )
+                    """)
+                    
+                    # Game players table
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS game_players (
+                            id SERIAL PRIMARY KEY,
+                            game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+                            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                            card_number TEXT,
+                            card_data JSONB,
+                            marked_numbers JSONB DEFAULT '[]',
+                            bingo_called BOOLEAN DEFAULT FALSE,
+                            bingo_time TIMESTAMP,
+                            win_amount DECIMAL(10,2) DEFAULT 0,
+                            is_winner BOOLEAN DEFAULT FALSE,
+                            joined_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    
+                    # Withdrawal requests
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                            amount DECIMAL(12,2) NOT NULL,
+                            status TEXT DEFAULT 'pending',
+                            payment_method TEXT,
+                            payment_details TEXT,
+                            processed_by INTEGER REFERENCES users(id),
+                            processed_at TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    
+                    # Create indexes for performance
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance DESC)")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC)")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_games_status ON games(status)")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status)")
+                    
+                    logger.info("✅ Database tables created/verified")
                 
         except Exception as e:
             logger.error(f"❌ Failed to create tables: {e}")
+            raise
     
-    # ============= USER MANAGEMENT =============
+    async def update_balance(self, user_id: int, amount: float, 
+                             transaction_type: str, description: str = "",
+                             reference: str = None) -> bool:
+        """Atomic balance update with transaction logging"""
+        if amount == 0:
+            return True
+        
+        try:
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    # Get current user with row lock
+                    user = await conn.fetchrow(
+                        "SELECT * FROM users WHERE id = $1 FOR UPDATE",
+                        user_id
+                    )
+                    if not user:
+                        logger.error(f"User {user_id} not found")
+                        return False
+                    
+                    current_balance = float(user['balance'])
+                    new_balance = current_balance + amount
+                    
+                    if new_balance < 0:
+                        logger.error(f"Insufficient balance for user {user_id}: {current_balance} < {-amount}")
+                        return False
+                    
+                    # Update user balance
+                    await conn.execute("""
+                        UPDATE users 
+                        SET balance = $1, last_seen = $2
+                        WHERE id = $3
+                    """, new_balance, datetime.now(), user_id)
+                    
+                    # Update totals based on transaction type
+                    if amount > 0:
+                        if transaction_type in ['deposit', 'welcome_bonus', 'admin_deposit']:
+                            await conn.execute("""
+                                UPDATE users 
+                                SET total_deposits = total_deposits + $1
+                                WHERE id = $2
+                            """, amount, user_id)
+                        elif transaction_type == 'win':
+                            await conn.execute("""
+                                UPDATE users 
+                                SET total_wins = total_wins + $1, games_won = games_won + 1
+                                WHERE id = $2
+                            """, amount, user_id)
+                    else:
+                        if transaction_type in ['withdrawal', 'admin_withdrawal']:
+                            await conn.execute("""
+                                UPDATE users 
+                                SET total_withdrawals = total_withdrawals + $1
+                                WHERE id = $2
+                            """, -amount, user_id)
+                    
+                    # Record transaction
+                    await conn.execute("""
+                        INSERT INTO transactions 
+                        (user_id, type, amount, balance_after, description, reference, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """, user_id, transaction_type, abs(amount), new_balance, 
+                    description, reference or f"{transaction_type}_{datetime.now().timestamp()}", 
+                    datetime.now())
+                    
+                    logger.info(f"✅ Balance updated: user {user_id}: {current_balance} -> {new_balance} ({transaction_type}: {amount})")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"Error updating balance: {e}")
+            return False
     
     async def get_user(self, telegram_id: str) -> Optional[Dict]:
         """Get user by telegram ID"""
@@ -198,26 +251,25 @@ class DatabaseManager:
             logger.error(f"Error getting user: {e}")
             return None
     
-    async def get_user_by_id(self, user_id: int) -> Optional[Dict]:
-        """Get user by database ID"""
-        try:
-            async with self.pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    "SELECT * FROM users WHERE id = $1",
-                    user_id
-                )
-                return dict(row) if row else None
-        except Exception as e:
-            logger.error(f"Error getting user by id: {e}")
-            return None
-    
     async def create_user(self, telegram_id: str, username: str = None, 
                           first_name: str = None, last_name: str = None,
                           referred_by: str = None) -> Dict:
-        """Create new user with starting balance"""
+        """Create new user with atomic transaction"""
         try:
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
+                    # Check if user exists
+                    existing = await conn.fetchrow(
+                        "SELECT id FROM users WHERE telegram_id = $1",
+                        telegram_id
+                    )
+                    if existing:
+                        user = await conn.fetchrow(
+                            "SELECT * FROM users WHERE telegram_id = $1",
+                            telegram_id
+                        )
+                        return dict(user)
+                    
                     # Generate referral code
                     referral_code = f"REF{telegram_id[-6:]}{datetime.now().strftime('%m%d')}"
                     
@@ -248,236 +300,95 @@ class DatabaseManager:
             logger.error(f"Error creating user: {e}")
             return None
     
-    # ============= WALLET / BALANCE MANAGEMENT =============
-    
-    async def update_balance(self, user_id: int, amount: float, 
-                             transaction_type: str, description: str = "",
-                             reference: str = None) -> bool:
-        """Update user balance with transaction record"""
-        try:
-            async with self.pool.acquire() as conn:
-                async with conn.transaction():
-                    # Get current user with lock for update
-                    user = await conn.fetchrow(
-                        "SELECT * FROM users WHERE id = $1 FOR UPDATE",
-                        user_id
-                    )
-                    if not user:
-                        logger.error(f"User {user_id} not found")
-                        return False
-                    
-                    current_balance = float(user['balance'])
-                    new_balance = current_balance + amount
-                    
-                    # Update user balance
-                    update_query = """
-                        UPDATE users 
-                        SET balance = $1, last_seen = $2
-                    """
-                    params = [new_balance, datetime.now()]
-                    
-                    # Update totals based on transaction type
-                    if amount > 0:
-                        if transaction_type in ['deposit', 'welcome_bonus']:
-                            update_query += ", total_deposits = total_deposits + $3"
-                            params.append(amount)
-                        elif transaction_type == 'win':
-                            update_query += ", total_wins = total_wins + $3"
-                            params.append(amount)
-                    else:
-                        if transaction_type == 'withdrawal':
-                            update_query += ", total_withdrawals = total_withdrawals + $3"
-                            params.append(abs(amount))
-                    
-                    update_query += " WHERE id = $4"
-                    params.append(user_id)
-                    
-                    await conn.execute(update_query, *params)
-                    
-                    # Record transaction
-                    await conn.execute("""
-                        INSERT INTO transactions 
-                        (user_id, type, amount, balance_after, description, reference, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    """, user_id, transaction_type, abs(amount), new_balance, 
-                    description, reference or f"{transaction_type}_{datetime.now().timestamp()}", 
-                    datetime.now())
-                    
-                    # If this is a win, update games_won count
-                    if transaction_type == 'win':
-                        await conn.execute("""
-                            UPDATE users 
-                            SET games_won = games_won + 1 
-                            WHERE id = $1
-                        """, user_id)
-                    
-                    logger.info(f"✅ Balance updated for user {user_id}: {current_balance} -> {new_balance} ({transaction_type}: {amount})")
-                    return True
-                    
-        except Exception as e:
-            logger.error(f"Error updating balance: {e}")
-            return False
-    
-    async def get_balance(self, telegram_id: str) -> float:
-        """Get user balance"""
-        try:
-            user = await self.get_user(telegram_id)
-            return float(user['balance']) if user else 0.0
-        except Exception as e:
-            logger.error(f"Error getting balance: {e}")
-            return 0.0
-    
-    async def deduct_balance(self, user_id: int, amount: float, 
-                             description: str = "") -> bool:
-        """Deduct balance from user (for bets, card purchases)"""
-        if amount <= 0:
-            return False
-        return await self.update_balance(user_id, -amount, 'bet', description)
-    
-    async def add_balance(self, user_id: int, amount: float, 
-                          transaction_type: str, description: str = "") -> bool:
-        """Add balance to user (deposits, wins, bonuses)"""
-        if amount <= 0:
-            return False
-        return await self.update_balance(user_id, amount, transaction_type, description)
-    
-    # ============= DEPOSIT & WITHDRAWAL =============
-    
-    async def create_withdrawal_request(self, user_id: int, amount: float, 
-                                         payment_method: str = "telegram",
-                                         payment_details: str = None) -> Dict:
-        """Create a withdrawal request"""
-        try:
-            async with self.pool.acquire() as conn:
-                async with conn.transaction():
-                    # Check if user has enough balance
-                    user = await conn.fetchrow(
-                        "SELECT balance FROM users WHERE id = $1 FOR UPDATE",
-                        user_id
-                    )
-                    if not user or float(user['balance']) < amount:
-                        return None
-                    
-                    # Create withdrawal request
-                    row = await conn.fetchrow("""
-                        INSERT INTO withdrawal_requests 
-                        (user_id, amount, payment_method, payment_details, created_at)
-                        VALUES ($1, $2, $3, $4, $5)
-                        RETURNING *
-                    """, user_id, amount, payment_method, payment_details, datetime.now())
-                    
-                    # Deduct balance (pending until processed)
-                    await self.update_balance(user_id, -amount, 'withdrawal_pending', 
-                                             f"Withdrawal request: {amount} Birr")
-                    
-                    logger.info(f"✅ Withdrawal request created for user {user_id}: {amount} Birr")
-                    return dict(row)
-                    
-        except Exception as e:
-            logger.error(f"Error creating withdrawal request: {e}")
-            return None
-    
-    async def process_withdrawal(self, request_id: int, admin_id: int, 
-                                  approve: bool = True) -> bool:
-        """Process a withdrawal request (approve or reject)"""
-        try:
-            async with self.pool.acquire() as conn:
-                async with conn.transaction():
-                    request = await conn.fetchrow(
-                        "SELECT * FROM withdrawal_requests WHERE id = $1 FOR UPDATE",
-                        request_id
-                    )
-                    if not request:
-                        return False
-                    
-                    if approve:
-                        # Mark as completed
-                        await conn.execute("""
-                            UPDATE withdrawal_requests 
-                            SET status = 'completed', processed_by = $1, processed_at = $2
-                            WHERE id = $3
-                        """, admin_id, datetime.now(), request_id)
-                        
-                        # Update transaction record
-                        await conn.execute("""
-                            UPDATE transactions 
-                            SET status = 'completed', 
-                                description = description || ' - Approved'
-                            WHERE user_id = $1 AND amount = $2 
-                            AND type = 'withdrawal_pending'
-                            ORDER BY created_at DESC LIMIT 1
-                        """, request['user_id'], request['amount'])
-                        
-                        logger.info(f"✅ Withdrawal request {request_id} approved")
-                    else:
-                        # Reject - refund the amount
-                        await conn.execute("""
-                            UPDATE withdrawal_requests 
-                            SET status = 'rejected', processed_by = $1, processed_at = $2
-                            WHERE id = $3
-                        """, admin_id, datetime.now(), request_id)
-                        
-                        # Refund the amount back to user
-                        await self.update_balance(request['user_id'], request['amount'], 
-                                                 'refund', f"Withdrawal rejected - Refund")
-                        
-                        logger.info(f"✅ Withdrawal request {request_id} rejected, refunded")
-                    
-                    return True
-                    
-        except Exception as e:
-            logger.error(f"Error processing withdrawal: {e}")
-            return False
-    
-    async def get_withdrawal_requests(self, status: str = "pending") -> List[Dict]:
-        """Get withdrawal requests by status"""
+    async def get_active_games(self) -> List[Dict]:
+        """Get active games for recovery"""
         try:
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT w.*, u.username, u.first_name, u.last_name, u.telegram_id
-                    FROM withdrawal_requests w
-                    JOIN users u ON w.user_id = u.id
-                    WHERE w.status = $1
-                    ORDER BY w.created_at DESC
-                """, status)
+                    SELECT * FROM games 
+                    WHERE status IN ('waiting', 'active')
+                    ORDER BY created_at DESC
+                """)
                 return [dict(row) for row in rows]
         except Exception as e:
-            logger.error(f"Error getting withdrawal requests: {e}")
+            logger.error(f"Error getting active games: {e}")
             return []
     
-    # ============= GAME MANAGEMENT =============
-    
-    async def create_game(self, game_id: str, room_id: str, **kwargs) -> Dict:
-        """Create a new game record"""
+    async def get_game_players(self, game_id: int) -> List[Dict]:
+        """Get players for a game"""
         try:
             async with self.pool.acquire() as conn:
-                row = await conn.fetchrow("""
-                    INSERT INTO games 
-                    (game_id, room_id, card_price, prize_percentage, min_players, max_players, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING *
-                """, game_id, room_id, 
-                kwargs.get('card_price', 10),
-                kwargs.get('prize_percentage', 80),
-                kwargs.get('min_players', 2),
-                kwargs.get('max_players', 400),
-                datetime.now())
-                return dict(row) if row else None
+                rows = await conn.fetch("""
+                    SELECT gp.*, u.username, u.first_name
+                    FROM game_players gp
+                    JOIN users u ON gp.user_id = u.id
+                    WHERE gp.game_id = $1
+                """, game_id)
+                return [dict(row) for row in rows]
         except Exception as e:
-            logger.error(f"Error creating game: {e}")
-            return None
+            logger.error(f"Error getting game players: {e}")
+            return []
     
-    async def add_player_to_game(self, game_id: int, user_id: int, 
-                                  card_number: str, card_data: list) -> bool:
+    async def update_game_status(self, game_id: str, status: str, timestamp: datetime = None):
+        """Update game status"""
+        try:
+            async with self.pool.acquire() as conn:
+                if status == "active":
+                    await conn.execute("""
+                        UPDATE games 
+                        SET status = $1, started_at = $2
+                        WHERE game_id = $3
+                    """, status, timestamp or datetime.now(), game_id)
+                elif status == "finished":
+                    await conn.execute("""
+                        UPDATE games 
+                        SET status = $1, finished_at = $2
+                        WHERE game_id = $3
+                    """, status, timestamp or datetime.now(), game_id)
+                else:
+                    await conn.execute("""
+                        UPDATE games SET status = $1 WHERE game_id = $2
+                    """, status, game_id)
+        except Exception as e:
+            logger.error(f"Error updating game status: {e}")
+    
+    async def update_game_finished(self, game_id: str, winners: List[str], finished_at: datetime):
+        """Update game as finished with winners"""
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE games 
+                    SET status = 'finished', winners = $1, finished_at = $2
+                    WHERE game_id = $3
+                """, json.dumps(winners), finished_at, game_id)
+        except Exception as e:
+            logger.error(f"Error updating game finished: {e}")
+    
+    async def add_player_to_game(self, game_id: str, user_id: int, card_number: str, card_data: list) -> bool:
         """Add player to game"""
         try:
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
+                    # Get game ID
+                    game_row = await conn.fetchrow(
+                        "SELECT id FROM games WHERE game_id = $1",
+                        game_id
+                    )
+                    if not game_row:
+                        # Create game record if not exists
+                        game_row = await conn.fetchrow("""
+                            INSERT INTO games (game_id, room_id, status, created_at)
+                            VALUES ($1, 'classic', 'waiting', $2)
+                            RETURNING id
+                        """, game_id, datetime.now())
+                    
+                    game_db_id = game_row['id']
+                    
                     await conn.execute("""
                         INSERT INTO game_players 
                         (game_id, user_id, card_number, card_data, joined_at)
                         VALUES ($1, $2, $3, $4, $5)
-                    """, game_id, user_id, str(card_number), json.dumps(card_data), datetime.now())
+                    """, game_db_id, user_id, card_number, json.dumps(card_data), datetime.now())
                     
                     # Update user's games_played count
                     await conn.execute("""
@@ -490,35 +401,52 @@ class DatabaseManager:
             logger.error(f"Error adding player to game: {e}")
             return False
     
-    async def update_game_winner(self, game_id: int, user_id: int, win_amount: float):
-        """Update game winner"""
+    async def get_user_count(self) -> int:
+        """Get total user count"""
         try:
             async with self.pool.acquire() as conn:
-                async with conn.transaction():
-                    # Update game_players
-                    await conn.execute("""
-                        UPDATE game_players 
-                        SET is_winner = TRUE, win_amount = $1, bingo_called = TRUE, bingo_time = $2
-                        WHERE game_id = $3 AND user_id = $4
-                    """, win_amount, datetime.now(), game_id, user_id)
-                    
-                    # Update game record
-                    await conn.execute("""
-                        UPDATE games 
-                        SET status = 'finished', finished_at = $1, 
-                            winners = winners || $2::jsonb
-                        WHERE id = $3
-                    """, datetime.now(), json.dumps([user_id]), game_id)
-                    
-                    return True
+                row = await conn.fetchrow("SELECT COUNT(*) FROM users")
+                return row[0] if row else 0
         except Exception as e:
-            logger.error(f"Error updating game winner: {e}")
-            return False
+            logger.error(f"Error getting user count: {e}")
+            return 0
     
-    # ============= LEADERBOARD & STATS =============
+    async def get_all_users(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get all users"""
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT id, telegram_id, username, first_name, last_name, 
+                           balance, total_deposits, total_withdrawals, total_wins,
+                           games_played, games_won, is_active, is_banned, is_vip,
+                           referral_code, referred_by, created_at, last_seen
+                    FROM users
+                    ORDER BY created_at DESC
+                    LIMIT $1 OFFSET $2
+                """, limit, offset)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all users: {e}")
+            return []
+    
+    async def get_all_transactions(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get all transactions"""
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT t.*, u.username, u.first_name, u.telegram_id
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.id
+                    ORDER BY t.created_at DESC
+                    LIMIT $1 OFFSET $2
+                """, limit, offset)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all transactions: {e}")
+            return []
     
     async def get_leaderboard(self, days: int = 30, limit: int = 10) -> List[Dict]:
-        """Get top players by wins and balance"""
+        """Get leaderboard"""
         try:
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
@@ -542,170 +470,6 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error getting leaderboard: {e}")
             return []
-    
-    async def get_user_stats(self, user_id: int) -> Dict:
-        """Get comprehensive user statistics"""
-        try:
-            async with self.pool.acquire() as conn:
-                # Get user stats
-                user = await conn.fetchrow("""
-                    SELECT * FROM users WHERE id = $1
-                """, user_id)
-                
-                if not user:
-                    return {}
-                
-                # Get recent transactions
-                transactions = await conn.fetch("""
-                    SELECT type, amount, balance_after, created_at, description
-                    FROM transactions
-                    WHERE user_id = $1
-                    ORDER BY created_at DESC
-                    LIMIT 10
-                """, user_id)
-                
-                # Get game history
-                games = await conn.fetch("""
-                    SELECT g.game_id, g.room_id, gp.card_number, gp.win_amount, gp.is_winner, gp.joined_at
-                    FROM game_players gp
-                    JOIN games g ON gp.game_id = g.id
-                    WHERE gp.user_id = $1
-                    ORDER BY gp.joined_at DESC
-                    LIMIT 10
-                """, user_id)
-                
-                return {
-                    "user": dict(user),
-                    "recent_transactions": [dict(t) for t in transactions],
-                    "recent_games": [dict(g) for g in games]
-                }
-        except Exception as e:
-            logger.error(f"Error getting user stats: {e}")
-            return {}
-    
-    # ============= TRANSACTION HISTORY =============
-    
-    async def get_transaction_history(self, user_id: int, limit: int = 20) -> List[Dict]:
-        """Get transaction history for a user"""
-        try:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch("""
-                    SELECT id, type, amount, balance_after, description, reference, created_at, status
-                    FROM transactions
-                    WHERE user_id = $1
-                    ORDER BY created_at DESC
-                    LIMIT $2
-                """, user_id, limit)
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Error getting transaction history: {e}")
-            return []
-    
-    async def get_all_transactions(self, limit: int = 100, offset: int = 0) -> List[Dict]:
-        """Get all transactions (admin only)"""
-        try:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch("""
-                    SELECT t.*, u.username, u.first_name, u.telegram_id
-                    FROM transactions t
-                    JOIN users u ON t.user_id = u.id
-                    ORDER BY t.created_at DESC
-                    LIMIT $1 OFFSET $2
-                """, limit, offset)
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Error getting all transactions: {e}")
-            return []
-    
-    # ============= AUDIT LOGS =============
-    
-    async def add_audit_log(self, user_id: int, action: str, 
-                             details: Dict = None, ip: str = None, 
-                             user_agent: str = None) -> bool:
-        """Add audit log entry"""
-        try:
-            async with self.pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO audit_logs (user_id, action, details, ip_address, user_agent, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                """, user_id, action, json.dumps(details) if details else None, 
-                ip, user_agent, datetime.now())
-                return True
-        except Exception as e:
-            logger.error(f"Error adding audit log: {e}")
-            return False
-    
-    async def get_audit_logs(self, limit: int = 100) -> List[Dict]:
-        """Get audit logs"""
-        try:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch("""
-                    SELECT a.*, u.username, u.first_name
-                    FROM audit_logs a
-                    LEFT JOIN users u ON a.user_id = u.id
-                    ORDER BY a.created_at DESC
-                    LIMIT $1
-                """, limit)
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Error getting audit logs: {e}"
-                         f"Error getting audit logs: {e}")
-            return []
-    
-    # ============= ADMIN FUNCTIONS =============
-    
-    async def get_all_users(self, limit: int = 100, offset: int = 0) -> List[Dict]:
-        """Get all users (admin only)"""
-        try:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch("""
-                    SELECT id, telegram_id, username, first_name, last_name, 
-                           balance, total_deposits, total_withdrawals, total_wins,
-                           games_played, games_won, is_active, is_banned, is_vip,
-                           referral_code, referred_by, created_at, last_seen
-                    FROM users
-                    ORDER BY created_at DESC
-                    LIMIT $1 OFFSET $2
-                """, limit, offset)
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Error getting all users: {e}")
-            return []
-    
-    async def get_user_count(self) -> int:
-        """Get total user count"""
-        try:
-            async with self.pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT COUNT(*) FROM users")
-                return row[0] if row else 0
-        except Exception as e:
-            logger.error(f"Error getting user count: {e}")
-            return 0
-    
-    async def get_total_balance(self) -> float:
-        """Get total balance across all users"""
-        try:
-            async with self.pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT COALESCE(SUM(balance), 0) FROM users")
-                return float(row[0]) if row else 0.0
-        except Exception as e:
-            logger.error(f"Error getting total balance: {e}")
-            return 0.0
 
 # Global database instance
 db = DatabaseManager()
-
-# Initialize database on import
-import asyncio
-async def init_db():
-    await db.init_pool()
-
-# Run initialization
-try:
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        asyncio.create_task(init_db())
-    else:
-        loop.run_until_complete(init_db())
-except Exception as e:
-    logger.warning(f"Database initialization will run on first request: {e}")
