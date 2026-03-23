@@ -37,13 +37,13 @@ app.add_middleware(
 )
 
 # Admin configuration
-ADMIN_IDS = [8576569079]  # Your Telegram user IDs
-ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", secrets.token_urlsafe(32))
-ADMIN_TELEGRAM_ID = 8576569079  # Admin Telegram ID to receive support messages
+ADMIN_IDS = [int(os.getenv("ADMIN_IDS"))]  # Your Telegram user IDs
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY")
+ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_IDS"))  # Admin Telegram ID to receive support messages
 
 # Initialize bot application
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://conceptual-debby-wond-7482233b.koyeb.app")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBAPP_URL = os.getenv("WEBAPP_URL")
 
 # Starting balance for new users
 STARTING_BALANCE = 20  # 20 Birr for new registrations
