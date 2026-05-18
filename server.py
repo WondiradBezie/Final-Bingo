@@ -569,6 +569,42 @@ async def admin_get_users(
         logger.error(f"Admin get users error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/admin/toggle-ban")
+async def admin_toggle_ban(request: Request, auth: dict = Depends(verify_token)):
+    """Toggle user ban status"""
+    if not auth.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        data = await request.json()
+        user_id = data.get("userId")
+
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(str(user_id))
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        new_status = not user.get("is_banned", False)
+
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE users SET is_banned = $1 WHERE id = $2",
+                new_status, user["id"]
+            )
+
+        return JSONResponse({"success": True, "is_banned": new_status})
+    except Exception as e:
+        logger.error(f"Admin toggle ban error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/admin/adjust-balance")
 async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_token)):
     """Admin adjust user balance"""
@@ -582,15 +618,24 @@ async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_tok
         type_op = data.get("type")
         reason = data.get("reason", "")
         
-        user = await db.get_user(user_id) if db else None
+        # Try finding by internal ID first
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(str(user_id))
         
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        current = user.get("balance", 0)
+        current = float(user.get("balance", 0))
+        user_id_val = user.get("id")
         
         if type_op == "add":
-            user_id_val = user.get("id")
             await db.update_balance(
                 user_id=user_id_val,
                 amount=amount,
@@ -600,7 +645,6 @@ async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_tok
         elif type_op == "subtract":
             if current < amount:
                 return JSONResponse({"success": False, "error": "Insufficient balance"})
-            user_id_val = user.get("id")
             await db.update_balance(
                 user_id=user_id_val,
                 amount=-amount,
@@ -610,7 +654,6 @@ async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_tok
         elif type_op == "set":
             diff = amount - current
             if diff != 0:
-                user_id_val = user.get("id")
                 await db.update_balance(
                     user_id=user_id_val,
                     amount=diff,
@@ -618,10 +661,10 @@ async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_tok
                     description=f'Admin set balance to {amount}: {reason}'
                 )
         
-        updated_user = await db.get_user(user_id)
-        new_balance = updated_user.get("balance", 0)
+        updated_user = await db.get_user_by_id(user_id_val)
+        new_balance = float(updated_user.get("balance", 0))
         
-        logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {new_balance}")
+        logger.info(f"Admin adjusted balance for user {user_id_val}: {current} -> {new_balance}")
         
         return JSONResponse({
             "success": True,
@@ -631,6 +674,71 @@ async def admin_adjust_balance(request: Request, auth: dict = Depends(verify_tok
         raise
     except Exception as e:
         logger.error(f"Admin adjust balance error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/users/{user_id}")
+async def admin_get_user_details(user_id: str, auth: dict = Depends(verify_token)):
+    """Get detailed user info for admin"""
+    if not auth.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return JSONResponse(user)
+    except Exception as e:
+        logger.error(f"Admin get user error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/games")
+async def admin_get_games(limit: int = 50, offset: int = 0, auth: dict = Depends(verify_token)):
+    """Get all games for admin"""
+    if not auth.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        games = await db.get_all_games(limit, offset)
+        return JSONResponse(games)
+    except Exception as e:
+        logger.error(f"Admin get games error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/transactions")
+async def admin_get_transactions(limit: int = 50, offset: int = 0, auth: dict = Depends(verify_token)):
+    """Get all transactions for admin"""
+    if not auth.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        transactions = await db.get_all_transactions(limit, offset)
+
+        # Calculate daily stats
+        today = datetime.utcnow().date()
+        today_deposits = sum(t['amount'] for t in transactions if t['created_at'].date() == today and t['type'] in ['deposit', 'admin_deposit'])
+        today_withdrawals = sum(t['amount'] for t in transactions if t['created_at'].date() == today and t['type'] in ['withdrawal', 'admin_withdrawal'])
+        today_wins = sum(t['amount'] for t in transactions if t['created_at'].date() == today and t['type'] == 'win')
+        net_revenue = sum(t['amount'] for t in transactions if t['created_at'].date() == today and t['type'] == 'bet') - today_wins
+
+        return JSONResponse({
+            "todayDeposits": today_deposits,
+            "todayWithdrawals": today_withdrawals,
+            "todayWins": today_wins,
+            "netRevenue": net_revenue,
+            "list": transactions
+        })
+    except Exception as e:
+        logger.error(f"Admin get transactions error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============= WEBSOCKET ENDPOINT =============
