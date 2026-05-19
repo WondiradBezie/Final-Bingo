@@ -8,6 +8,8 @@ services:
       POSTGRES_USER: bingo
       POSTGRES_PASSWORD: secure_password
       POSTGRES_DB: bingo
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

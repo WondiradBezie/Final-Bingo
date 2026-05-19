@@ -31,6 +31,7 @@ class GameMode(Enum):
 class Player:
     user_id: str
     username: str
+    db_id: int
     card: List[int]
     card_number: int
     marked: Set[int] = field(default_factory=set)
@@ -145,7 +146,7 @@ class BingoGame:
         
         return card, card_hash
     
-    async def add_player(self, user_id: str, username: str, 
+    async def add_player(self, user_id: str, username: str, db_id: int,
                         card_number: int = None, client_seed: str = None) -> Tuple[bool, str, dict]:
         """Add player to game with anti-cheat protection"""
         async with self._lock:
@@ -175,6 +176,7 @@ class BingoGame:
             player = Player(
                 user_id=user_id,
                 username=username,
+                db_id=db_id,
                 card=card_data,
                 card_number=card_number,
                 marked=set()
@@ -415,8 +417,8 @@ class BingoGame:
                 player = self.players[winner_id]
                 if player.win_amount > 0 and self.db:
                     # Update user balance with transaction safety
-                    success = await self.db.add_balance(
-                        user_id=winner_id,
+                    success = await self.db.update_balance(
+                        user_id=player.db_id,
                         amount=player.win_amount,
                         transaction_type='win',
                         description=f'Won Bingo Game {self.game_id}'
@@ -550,6 +552,31 @@ class GameManager:
         room = self.rooms.get(room_id)
         if not room:
             return False, "Room not found", None, None
+
+        # Database integration
+        db_user = None
+        if self.db:
+            db_user = await self.db.get_user_by_telegram_id(user_id)
+            if not db_user:
+                db_user = await self.db.create_user(telegram_id=user_id, username=username)
+
+            if not db_user:
+                return False, "Could not initialize user", None, None
+
+            # Check balance
+            if db_user['balance'] < room.card_price:
+                return False, f"Insufficient balance. Card price: {room.card_price} Birr. Your balance: {db_user['balance']} Birr.", None, None
+
+            # Deduct balance
+            deduct_success = await self.db.update_balance(
+                user_id=db_user['id'],
+                amount=-room.card_price,
+                transaction_type='bet',
+                description=f'Joined Bingo Game in room {room_id}'
+            )
+
+            if not deduct_success:
+                return False, "Failed to process payment", None, None
         
         # Check if user already in a game
         if user_id in self.user_game:
@@ -566,7 +593,8 @@ class GameManager:
             game = await self.create_game(room_id)
         
         # Add player
-        success, msg, player_data = await game.add_player(user_id, username, card_number, client_seed)
+        db_id = db_user['id'] if db_user else 0
+        success, msg, player_data = await game.add_player(user_id, username, db_id, card_number, client_seed)
         
         if success:
             self.user_room[user_id] = room_id
@@ -576,6 +604,15 @@ class GameManager:
             # Auto-start if enough players
             if len(game.players) >= room.min_players and game.status == GameStatus.WAITING:
                 asyncio.create_task(self.start_game(game.game_id))
+        else:
+            # Refund if join failed but balance was deducted
+            if db_user:
+                await self.db.update_balance(
+                    user_id=db_user['id'],
+                    amount=room.card_price,
+                    transaction_type='refund',
+                    description=f'Refund for failed join: {msg}'
+                )
         
         return success, msg, game, player_data
     
@@ -718,8 +755,9 @@ class GameManager:
                     players = await self.db.get_game_players(game_data['game_id'])
                     for player_data in players:
                         player = Player(
-                            user_id=player_data['user_id'],
+                            user_id=str(player_data['telegram_id']),
                             username=player_data['username'],
+                            db_id=player_data['user_id'],
                             card=player_data['card_data'],
                             card_number=player_data['card_number'],
                             marked=set(player_data.get('marked_numbers', []))
