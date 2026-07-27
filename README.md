@@ -1,22 +1,40 @@
-# Joy Bingo Bot 🎮
+# JOY BINGO — Production Build
 
-Telegram Bingo bot with professional admin panel.
+JOY BINGO is a Telegram Bingo platform with a FastAPI/WebSocket web app, PostgreSQL wallet, admin API, and 400 fixed Bingo cards.
 
-## Features
-- 🎮 400 unique bingo cards
-- 👑 Professional admin panel with inline buttons
-- 💰 Deposit/Withdrawal management
-- 📊 System statistics
-- 🔍 User search
+## Important
 
-## Admin Commands
-- `/admin` - Open admin dashboard
-- `/admin_deposits` - View pending deposits
-- `/admin_withdrawals` - View pending withdrawals
-- `/admin_stats` - View system statistics
-- `/admin_search` - Search users
+This build is designed for testing and controlled deployment. Before accepting real-money play, verify all applicable Ethiopian laws, licensing requirements, payment-provider rules, tax obligations, and responsible-gaming requirements.
 
-## Deployment
-1. Set environment variables
-2. Run `pip install -r requirements.txt`
-3. Run `python bot.py`
+## Main components
+
+- `free_deploy.py` — application entry point (Telegram webhook + FastAPI + WebSocket + admin API)
+- `game_service.py` — authoritative Bingo engine
+- `database.py` — PostgreSQL persistence and atomic wallet operations
+- `cards.json` — exactly 400 validated cards
+- `webapp/` — player and admin interfaces
+- `Dockerfile` / `docker-compose.yaml` — local container deployment
+- `koyeb.yaml` — Koyeb starting configuration
+- `.env.example` — required environment variables
+- `RUNBOOK.txt` — complete installation, deployment, testing, and troubleshooting guide
+- `ARCHITECTURE.md` — technical architecture and money flow
+
+## Quick local start
+
+1. Copy `.env.example` to `.env` and replace every placeholder.
+2. Start PostgreSQL and Redis, or use `docker compose up -d postgres redis`.
+3. Install Python 3.11+ dependencies:
+
+```bash
+pip install -r requirements-free.txt
+```
+
+4. Start the application:
+
+```bash
+uvicorn free_deploy:app --host 0.0.0.0 --port 8000
+```
+
+5. Open `http://localhost:8000/webapp/lobby.html` for the web app.
+
+For the full setup and deployment procedure, read `RUNBOOK.txt`.

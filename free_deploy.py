@@ -15,10 +15,9 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
-import httpx
 import random
 from database import db
-import asyncpg
+from game_service import GameService, GameRoom, load_catalog
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -28,18 +27,40 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Joy Bingo API")
 
 # Add CORS middleware
+ALLOWED_ORIGINS = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "").split(",") if x.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS or ["http://localhost:8000"],
+    allow_credentials=bool(ALLOWED_ORIGINS),
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Admin configuration
-ADMIN_IDS = [int(os.getenv("ADMIN_IDS"))]  # Your Telegram user IDs
+def _parse_admin_ids():
+    raw = os.getenv("ADMIN_IDS", "")
+    values = []
+    for item in raw.split(","):
+        item = item.strip()
+        if item.isdigit():
+            values.append(int(item))
+    return values
+
+ADMIN_IDS = _parse_admin_ids()
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY")
-ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_IDS"))  # Admin Telegram ID to receive support messages
+ADMIN_TELEGRAM_ID = ADMIN_IDS[0] if ADMIN_IDS else None
+
+# Lightweight in-process API rate limiter. Financial/game validation still happens server-side.
+_action_times = {}
+
+def allow_action(user_id: str, per_second: int = 5, per_minute: int = 120) -> bool:
+    now = time.time() if "time" in globals() else __import__("time").time()
+    history = _action_times.setdefault(str(user_id), [])
+    history[:] = [t for t in history if t > now - 60]
+    if len(history) >= per_minute or sum(t > now - 1 for t in history) >= per_second:
+        return False
+    history.append(now)
+    return True
 
 # Initialize bot application
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -50,11 +71,6 @@ STARTING_BALANCE = 20  # 20 Birr for new registrations
 
 # Create bot application
 bot_app = None
-
-# Global selection timer
-selection_start_time = None
-SELECTION_DURATION = 20
-disqualified_players = set()
 
 # Load cards from cards.json
 CARDS_DATA = {}
@@ -83,7 +99,7 @@ def verify_admin_token(authorization: Optional[str] = Header(None)):
     
     token = authorization.replace("Bearer ", "")
     
-    if token != ADMIN_SECRET_KEY:
+    if not ADMIN_SECRET_KEY or token != ADMIN_SECRET_KEY:
         raise HTTPException(status_code=401, detail="Invalid token")
     
     return True
@@ -91,47 +107,6 @@ def verify_admin_token(authorization: Optional[str] = Header(None)):
 def is_admin_user(user_id: int) -> bool:
     """Check if a Telegram user is admin"""
     return str(user_id) in [str(uid) for uid in ADMIN_IDS]
-
-def start_selection_phase():
-    """Start the global selection timer"""
-    global selection_start_time
-    selection_start_time = time.time()
-    disqualified_players.clear()
-
-def selection_open():
-    """Check if selection phase is still open"""
-    if selection_start_time is None:
-        return False
-    return (time.time() - selection_start_time) < SELECTION_DURATION
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize bot on startup"""
-    global bot_app
-    await db.init_pool()
-    
-    if BOT_TOKEN:
-        bot_app = Application.builder().token(BOT_TOKEN).build()
-        
-        bot_app.add_handler(CommandHandler("start", start_command))
-        bot_app.add_handler(CommandHandler("help", help_command))
-        bot_app.add_handler(CommandHandler("play", play_command))
-        bot_app.add_handler(CommandHandler("balance", balance_command))
-        bot_app.add_handler(CommandHandler("deposit", deposit_command))
-        bot_app.add_handler(CommandHandler("withdraw", withdraw_command))
-        bot_app.add_handler(CommandHandler("profile", profile_command))
-        bot_app.add_handler(CommandHandler("rules", rules_command))
-        bot_app.add_handler(CommandHandler("admin", admin_command))
-        bot_app.add_handler(CommandHandler("id", id_command))
-        bot_app.add_handler(CommandHandler("register", register_command))
-        
-        bot_app.add_handler(CallbackQueryHandler(button_callback))
-        bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-        
-        await bot_app.initialize()
-        logger.info("✅ Bot application initialized")
-    else:
-        logger.warning("⚠️ BOT_TOKEN not set, bot commands disabled")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1078,6 +1053,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('awaiting_support_message'):
         # Forward message to admin
         admin_id = ADMIN_TELEGRAM_ID
+        if not admin_id:
+            await update.message.reply_text("Support is not configured yet. Please try again later.")
+            return
         
         support_message = f"""
 📞 **SUPPORT MESSAGE FROM USER**
@@ -1122,309 +1100,104 @@ Reply to this user by sending /reply_{user_id} [your message]
             )
         return
     
-    # Payment confirmation handler
+    # Payment confirmation / withdrawal request handlers.
     if context.user_data.get('awaiting_payment_confirmation'):
         try:
-            parts = text.split(' - ')
-            if len(parts) >= 2:
-                transaction_id = parts[0]
-                amount_part = parts[1]
-                amount = ''.join(filter(str.isdigit, amount_part))
-                method = parts[2] if len(parts) > 2 else "Unknown"
-                
-                try:
-                    amount_num = int(amount)
-                    if 10 <= amount_num <= 10000:
-                        user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                        await db.update_balance(
-                            user_id=user_id_val,
-                            amount=amount_num,
-                            transaction_type='deposit',
-                            description=f'Payment {transaction_id} via {method}'
-                        )
-                        
-                        updated_user = await db.get_user(user_id)
-                        new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                        
-                        await update.message.reply_text(
-                            f"✅ **DEPOSIT CONFIRMED!**\n\n"
-                            f"Transaction ID: `{transaction_id}`\n"
-                            f"Amount: **{amount_num} Birr**\n"
-                            f"Payment Method: {method}\n"
-                            f"New Balance: **{new_balance} Birr**\n\n"
-                            f"Thank you for your deposit!",
-                            parse_mode='Markdown'
-                        )
-                        context.user_data['awaiting_payment_confirmation'] = False
-                        
-                        # Notify admin about deposit
-                        admin_msg = f"""
-💰 **DEPOSIT NOTIFICATION**
-
-👤 User: @{user.username or user.first_name}
-🆔 ID: `{user_id}`
-💳 Method: {method}
-📊 Amount: {amount_num} Birr
-🔑 TXN: {transaction_id}
-✅ Status: Completed
-⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-"""
-                        try:
-                            await bot_app.bot.send_message(
-                                chat_id=ADMIN_TELEGRAM_ID,
-                                text=admin_msg,
-                                parse_mode='Markdown'
-                            )
-                        except:
-                            pass
-                            
-                    else:
-                        await update.message.reply_text(
-                            "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
-                        )
-                except ValueError:
-                    await update.message.reply_text(
-                        "❌ Invalid amount format. Please enter a valid number."
-                    )
-            else:
-                await update.message.reply_text(
-                    "❌ Please send in format: `TXN123456789 - 100 - Telebirr`\n\n"
-                    "Example: `TXN123456789 - 100 - Telebirr`",
-                    parse_mode='Markdown'
-                )
-        except Exception as e:
-            logger.error(f"Payment confirmation error: {e}")
+            parts = [x.strip() for x in text.split(' - ')]
+            if len(parts) < 3:
+                raise ValueError
+            transaction_id, amount_text, method = parts[0], parts[1], parts[2]
+            amount_num = int(amount_text)
+            if not 10 <= amount_num <= 10000:
+                raise ValueError
+            if method.lower() not in {"telebirr", "cbe", "cbe birr"}:
+                raise ValueError
+            method = "Telebirr" if method.lower() == "telebirr" else "CBE Birr"
+            request_row = await db.create_deposit_request(user_id, amount_num, method, transaction_id)
+            if not request_row:
+                await update.message.reply_text("❌ This transaction ID is already submitted or your account is unavailable.")
+                return
+            context.user_data['awaiting_payment_confirmation'] = False
             await update.message.reply_text(
-                "❌ Failed to process payment. Please try again or contact support."
-            )
-    
-    # Withdrawal to Telebirr handler
-    elif context.user_data.get('awaiting_withdraw_telebirr'):
-        try:
-            parts = text.split(' - ')
-            if len(parts) >= 2:
-                amount = int(parts[0])
-                phone = parts[1]
-                
-                balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
-                
-                if amount < 50:
-                    await update.message.reply_text(
-                        "❌ Minimum withdrawal amount is 50 Birr."
-                    )
-                elif amount > balance:
-                    await update.message.reply_text(
-                        f"❌ Insufficient balance. Your balance is {balance} Birr."
-                    )
-                else:
-                    user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                    await db.update_balance(
-                        user_id=user_id_val,
-                        amount=-amount,
-                        transaction_type='withdrawal',
-                        description=f'Withdrawal to Telebirr {phone}'
-                    )
-                    
-                    updated_user = await db.get_user(user_id)
-                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                    
-                    await update.message.reply_text(
-                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
-                        f"Amount: **{amount} Birr**\n"
-                        f"To: {phone} (Telebirr)\n"
-                        f"New Balance: **{new_balance} Birr**\n"
-                        f"Processing Time: **24 hours**\n\n"
-                        f"You will be notified when your withdrawal is processed.",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['awaiting_withdraw_telebirr'] = False
-                    
-                    # Notify admin about withdrawal request
-                    admin_msg = f"""
-📤 **WITHDRAWAL REQUEST**
-
-👤 User: @{user.username or user.first_name}
-🆔 ID: `{user_id}`
-💳 Method: Telebirr
-📞 Phone: {phone}
-📊 Amount: {amount} Birr
-💰 New Balance: {new_balance} Birr
-⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-"""
-                    try:
-                        await bot_app.bot.send_message(
-                            chat_id=ADMIN_TELEGRAM_ID,
-                            text=admin_msg,
-                            parse_mode='Markdown'
-                        )
-                    except:
-                        pass
-                        
-            else:
-                await update.message.reply_text(
-                    "❌ Please send in format: `200 - 0912345678`\n\n"
-                    "Example: `200 - 0912345678`",
-                    parse_mode='Markdown'
-                )
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Please enter a valid amount and phone number.\n\n"
-                "Format: `200 - 0912345678`",
+                f"✅ Deposit request submitted.\n\nAmount: **{amount_num} Birr**\nMethod: {method}\nTransaction ID: `{transaction_id}`\n\nYour balance will change only after admin verification.",
                 parse_mode='Markdown'
             )
-    
-    # Withdrawal to CBE Birr handler
-    elif context.user_data.get('awaiting_withdraw_cbe'):
-        try:
-            parts = text.split(' - ')
-            if len(parts) >= 2:
-                amount = int(parts[0])
-                phone = parts[1]
-                
-                balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
-                
-                if amount < 50:
-                    await update.message.reply_text(
-                        "❌ Minimum withdrawal amount is 50 Birr."
-                    )
-                elif amount > balance:
-                    await update.message.reply_text(
-                        f"❌ Insufficient balance. Your balance is {balance} Birr."
-                    )
-                else:
-                    user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                    await db.update_balance(
-                        user_id=user_id_val,
-                        amount=-amount,
-                        transaction_type='withdrawal',
-                        description=f'Withdrawal to CBE Birr {phone}'
-                    )
-                    
-                    updated_user = await db.get_user(user_id)
-                    new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                    
-                    await update.message.reply_text(
-                        f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
-                        f"Amount: **{amount} Birr**\n"
-                        f"To: {phone} (CBE Birr)\n"
-                        f"New Balance: **{new_balance} Birr**\n"
-                        f"Processing Time: **24 hours**\n\n"
-                        f"You will be notified when your withdrawal is processed.",
-                        parse_mode='Markdown'
-                    )
-                    context.user_data['awaiting_withdraw_cbe'] = False
-                    
-                    # Notify admin about withdrawal request
-                    admin_msg = f"""
-📤 **WITHDRAWAL REQUEST**
-
-👤 User: @{user.username or user.first_name}
-🆔 ID: `{user_id}`
-💳 Method: CBE Birr
-📞 Phone: {phone}
-📊 Amount: {amount} Birr
-💰 New Balance: {new_balance} Birr
-⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-"""
-                    try:
-                        await bot_app.bot.send_message(
-                            chat_id=ADMIN_TELEGRAM_ID,
-                            text=admin_msg,
-                            parse_mode='Markdown'
-                        )
-                    except:
-                        pass
-                        
-            else:
-                await update.message.reply_text(
-                    "❌ Please send in format: `200 - 0912345678`\n\n"
-                    "Example: `200 - 0912345678`",
+            if ADMIN_TELEGRAM_ID:
+                await bot_app.bot.send_message(
+                    chat_id=ADMIN_TELEGRAM_ID,
+                    text=(f"💰 DEPOSIT REQUEST\n\nUser: @{user.username or user.first_name}\n"
+                           f"ID: `{user_id}`\nMethod: {method}\nAmount: {amount_num} Birr\n"
+                           f"TXN: `{transaction_id}`\nRequest ID: {request_row['id']}"),
                     parse_mode='Markdown'
                 )
-        except ValueError:
+        except (ValueError, TypeError):
+            await update.message.reply_text("❌ Format: `TXN123 - 100 - Telebirr`", parse_mode='Markdown')
+        return
+
+    if context.user_data.get('awaiting_withdraw_telebirr') or context.user_data.get('awaiting_withdraw_cbe'):
+        method = "Telebirr" if context.user_data.get('awaiting_withdraw_telebirr') else "CBE Birr"
+        try:
+            parts = [x.strip() for x in text.split(' - ')]
+            if len(parts) < 2:
+                raise ValueError
+            amount = int(parts[0])
+            phone = parts[1]
+            if amount < 50 or amount > 100000 or not phone:
+                raise ValueError
+            request_row = await db.create_withdrawal_request(user_id, amount, method, phone)
+            if not request_row:
+                await update.message.reply_text("❌ Insufficient balance or withdrawal could not be created.")
+                return
+            context.user_data['awaiting_withdraw_telebirr'] = False
+            context.user_data['awaiting_withdraw_cbe'] = False
+            updated_user = await db.get_user(user_id)
+            new_balance = updated_user.get("balance", 0) if updated_user else 0
             await update.message.reply_text(
-                "❌ Please enter a valid amount and phone number.\n\n"
-                "Format: `200 - 0912345678`",
+                f"✅ **Withdrawal request submitted.**\n\nAmount: **{amount} Birr**\nTo: {phone} ({method})\n"
+                f"Available balance after reservation: **{new_balance} Birr**\n\nAdmin approval is required.",
                 parse_mode='Markdown'
             )
-    
-    # Deposit amount handler (for other deposit options)
-    elif context.user_data.get('awaiting_deposit'):
-        try:
-            amount = int(text)
-            if 10 <= amount <= 10000:
-                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                await db.update_balance(
-                    user_id=user_id_val,
-                    amount=amount,
-                    transaction_type='deposit',
-                    description=f'Deposit of {amount} Birr'
-                )
-                
-                updated_user = await db.get_user(user_id)
-                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                
-                await update.message.reply_text(
-                    f"✅ **DEPOSIT SUCCESSFUL!**\n\n"
-                    f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{new_balance} Birr**\n\n"
-                    f"Thank you for your deposit!",
+            if ADMIN_TELEGRAM_ID:
+                await bot_app.bot.send_message(
+                    chat_id=ADMIN_TELEGRAM_ID,
+                    text=(f"📤 WITHDRAWAL REQUEST\n\nUser: @{user.username or user.first_name}\n"
+                           f"ID: `{user_id}`\nMethod: {method}\nPhone: {phone}\nAmount: {amount} Birr\n"
+                           f"Request ID: {request_row['id']}"),
                     parse_mode='Markdown'
                 )
-                context.user_data['awaiting_deposit'] = False
-            else:
-                await update.message.reply_text(
-                    "❌ Invalid amount. Please enter an amount between 10 and 10000 Birr."
-                )
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Please enter a valid number."
-            )
-    
-    # Withdrawal amount handler (for other withdrawal options)
-    elif context.user_data.get('awaiting_withdraw'):
+        except (ValueError, TypeError):
+            await update.message.reply_text("❌ Format: `200 - 0912345678`", parse_mode='Markdown')
+        return
+
+    if context.user_data.get('awaiting_deposit'):
+        # Legacy flow now creates a pending request instead of crediting money automatically.
         try:
             amount = int(text)
-            balance = db_user.get("balance", 0) if isinstance(db_user, dict) else db_user.balance
-            
+            if not 10 <= amount <= 10000:
+                raise ValueError
+            context.user_data['awaiting_deposit'] = False
+            context.user_data['awaiting_payment_confirmation'] = True
+            await update.message.reply_text("Send the payment reference in this format: `TXN123 - 100 - Telebirr`", parse_mode='Markdown')
+        except ValueError:
+            await update.message.reply_text("❌ Please enter an amount between 10 and 10000 Birr.")
+        return
+
+    if context.user_data.get('awaiting_withdraw'):
+        try:
+            amount = int(text)
             if amount < 50:
-                await update.message.reply_text(
-                    "❌ Minimum withdrawal amount is 50 Birr."
-                )
-            elif amount > balance:
-                await update.message.reply_text(
-                    f"❌ Insufficient balance. Your balance is {balance} Birr."
-                )
-            else:
-                user_id_val = db_user.get("id") if isinstance(db_user, dict) else db_user.id
-                await db.update_balance(
-                    user_id=user_id_val,
-                    amount=-amount,
-                    transaction_type='withdrawal',
-                    description=f'Withdrawal request of {amount} Birr'
-                )
-                
-                updated_user = await db.get_user(user_id)
-                new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
-                
-                await update.message.reply_text(
-                    f"✅ **WITHDRAWAL REQUEST SUBMITTED!**\n\n"
-                    f"Amount: **{amount} Birr**\n"
-                    f"New Balance: **{new_balance} Birr**\n"
-                    f"Processing Time: **24 hours**\n\n"
-                    f"You will be notified when your withdrawal is processed.",
-                    parse_mode='Markdown'
-                )
-                context.user_data['awaiting_withdraw'] = False
+                raise ValueError
+            request_row = await db.create_withdrawal_request(user_id, amount, "Unknown", "Pending details")
+            if not request_row:
+                await update.message.reply_text("❌ Insufficient balance or withdrawal could not be created.")
+                return
+            context.user_data['awaiting_withdraw'] = False
+            await update.message.reply_text("✅ Withdrawal request created. An admin will review it.")
         except ValueError:
-            await update.message.reply_text(
-                "❌ Please enter a valid number."
-            )
-    
-    else:
-        await update.message.reply_text(
-            "I don't understand that command. Use /help to see available commands."
-        )
+            await update.message.reply_text("❌ Please enter a valid withdrawal amount (minimum 50 Birr).")
+        return
+
+    await update.message.reply_text("I don't understand that command. Use /help to see available commands.")
 
 # Health check endpoint
 @app.get("/")
@@ -1438,7 +1211,7 @@ async def root():
     }
 
 @app.get("/test-db")
-async def test_database():
+async def test_database(auth: bool = Depends(verify_admin_token)):
     try:
         if db.pool is None:
             return JSONResponse({
@@ -1459,50 +1232,6 @@ async def test_database():
             "status": "❌ Database connection failed",
             "error": str(e)
         }, status_code=500)
-
-# ============= Global Timer and Bingo Check Endpoints =============
-
-@app.post("/api/game/start_selection")
-async def api_start_selection():
-    start_selection_phase()
-    return {"success": True, "message": "Selection phase started"}
-
-@app.get("/can_select")
-async def can_select():
-    return {"allowed": selection_open()}
-
-@app.post("/api/game/check_bingo")
-async def check_bingo(request: Request):
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        room_id = data.get("room_id")
-        marked = data.get("marked", [])
-        
-        if user_id in disqualified_players:
-            return {"status": "blocked", "message": "You are disqualified"}
-        
-        marked_numbers = [m for m in marked if m != 'FREE']
-        marked_count = len(marked_numbers)
-        
-        if marked_count >= 5:
-            prize = 100
-            return {
-                "status": "win", 
-                "prize": prize,
-                "message": "Congratulations! You win!"
-            }
-        else:
-            disqualified_players.add(user_id)
-            logger.warning(f"Player {user_id} disqualified for fake bingo with only {marked_count} marks")
-            return {
-                "status": "disqualified",
-                "message": "Wrong BINGO! You are disqualified for this game."
-            }
-            
-    except Exception as e:
-        logger.error(f"Bingo check error: {e}")
-        return {"status": "error", "message": str(e)}
 
 # Webhook endpoint for Telegram
 @app.post("/api/webhook")
@@ -1556,7 +1285,7 @@ rooms_data = {
         "status": "waiting",
         "prize_pool": 0,
         "card_price": 10,
-        "description": "Traditional bingo - mark all numbers to win!"
+        "description": "Complete any row, column, or diagonal to win!"
     },
     "blackout": {
         "id": "blackout",
@@ -1590,230 +1319,142 @@ rooms_data = {
     }
 }
 
+# Canonical production game service. The database is authoritative for money.
+game_service = GameService(db)
+game_service.create_room(GameRoom("classic", "🎲 Classic Bingo", 10, 80, 2, 400, 2.0, 20, "line", rooms_data["classic"]["description"]))
+game_service.create_room(GameRoom("blackout", "⬛ Blackout", 20, 80, 2, 200, 2.0, 20, "blackout", rooms_data["blackout"]["description"]))
+game_service.create_room(GameRoom("four_corners", "📦 Four Corners", 12, 80, 2, 350, 2.0, 20, "four_corners", rooms_data["four_corners"]["description"]))
+game_service.create_room(GameRoom("line", "📏 Line Bingo", 10, 80, 2, 400, 2.0, 20, "line", rooms_data["line"]["description"]))
+
+
+def _sync_room_metadata():
+    for item in game_service.rooms_state():
+        room_id = item["room_id"]
+        if room_id in rooms_data:
+            rooms_data[room_id].update({
+                "players": item["players"], "status": item["status"],
+                "prize_pool": item["prize_pool"], "max_players": item["max_players"],
+                "card_price": item["card_price"],
+            })
+
+
 @app.get("/api/rooms")
 async def get_rooms():
+    _sync_room_metadata()
     return JSONResponse(list(rooms_data.values()))
+
 
 @app.get("/api/rooms/{room_id}")
 async def get_room(room_id: str):
-    if room_id in rooms_data:
-        return JSONResponse(rooms_data[room_id])
-    return JSONResponse({"error": "Room not found"}, status_code=404)
+    if room_id not in game_service.rooms:
+        raise HTTPException(status_code=404, detail="Room not found")
+    _sync_room_metadata()
+    return JSONResponse(rooms_data[room_id])
 
-# Game state storage
-games_data = {}
-player_sessions = {}
 
-@app.post("/api/rooms/{room_id}/join")
-async def join_room(room_id: str, request: Request):
+@app.post("/api/game/join")
+async def join_game(request: Request):
+    data = await request.json()
+    user_id = str(data.get("user_id") or "")
+    username = str(data.get("username") or "Player")[:64]
+    room_id = str(data.get("room_id") or "")
     try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        username = data.get("username", "Player")
-        
-        if room_id not in rooms_data:
-            return JSONResponse(
-                status_code=404,
-                content={"success": False, "error": "Room not found"}
-            )
-        
-        session_id = f"{room_id}_{user_id}_{datetime.now().timestamp()}"
-        player_sessions[user_id] = {
-            "room_id": room_id,
-            "session_id": session_id,
-            "joined_at": datetime.now().isoformat(),
-            "username": username
-        }
-        
-        rooms_data[room_id]["players"] += 1
-        
-        return JSONResponse({
-            "success": True,
-            "message": f"Welcome to {rooms_data[room_id]['name']}!",
-            "room": rooms_data[room_id],
-            "session_id": session_id
-        })
-        
-    except Exception as e:
-        logger.error(f"Error joining room: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
+        card_number = int(data.get("card_number"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid card number")
+    if not user_id or room_id not in game_service.rooms:
+        raise HTTPException(status_code=400, detail="Missing or invalid game information")
+    if not allow_action(user_id, per_second=3, per_minute=30):
+        raise HTTPException(status_code=429, detail="Too many requests")
+    ok, message, state = await game_service.join(user_id, username, room_id, card_number)
+    _sync_room_metadata()
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+    return JSONResponse({"success": True, "message": message, "game_state": state, "player_data": state.get("player")})
 
-@app.get("/api/game/state/{user_id}")
-async def get_game_state(user_id: str):
-    if user_id in player_sessions:
-        return JSONResponse({
-            "success": True,
-            "state": {
-                "in_game": True,
-                "room": player_sessions[user_id].get("room_id"),
-                "joined_at": player_sessions[user_id].get("joined_at")
-            }
-        })
-    return JSONResponse({
-        "success": True,
-        "state": {"in_game": False}
-    })
 
 @app.post("/api/game/select_card")
 async def select_card(request: Request):
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        room_id = data.get("room_id")
-        card_number = str(data.get("card_number"))
-        
-        if not all([user_id, room_id, card_number]):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": "Missing required fields"}
-            )
-        
-        if card_number not in CARDS_DATA:
-            return JSONResponse(
-                status_code=404,
-                content={"success": False, "error": f"Card #{card_number} not found"}
-            )
-        
-        for key, game in games_data.items():
-            if game.get("room_id") == room_id and game.get("card_number") == card_number:
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "error": f"Card #{card_number} already taken"}
-                )
-        
-        game_key = f"game:{room_id}:{user_id}"
-        games_data[game_key] = {
-            "user_id": user_id,
-            "room_id": room_id,
-            "card_number": card_number,
-            "card_data": CARDS_DATA[card_number],
-            "marked_numbers": [],
-            "selected_at": datetime.now().isoformat()
-        }
-        
-        if user_id in player_sessions:
-            player_sessions[user_id]["card_number"] = card_number
-        else:
-            player_sessions[user_id] = {
-                "room_id": room_id,
-                "card_number": card_number,
-                "joined_at": datetime.now().isoformat(),
-                "username": data.get("username", "Player")
-            }
-        
-        return JSONResponse({
-            "success": True,
-            "message": f"Card #{card_number} selected!",
-            "game_state": {
-                "card": CARDS_DATA[card_number],
-                "marked": []
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error selecting card: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
+    return await join_game(request)
+
 
 @app.get("/api/game/taken_cards/{room_id}")
 async def get_taken_cards(room_id: str):
-    try:
-        taken_cards = []
-        for key, game in games_data.items():
-            if game.get("room_id") == room_id and game.get("card_number"):
-                taken_cards.append(game["card_number"])
-        
-        return JSONResponse({
-            "success": True,
-            "taken_cards": taken_cards
-        })
-    except Exception as e:
-        logger.error(f"Error getting taken cards: {e}")
-        return JSONResponse({
-            "success": False,
-            "taken_cards": []
-        })
+    if room_id not in game_service.rooms:
+        raise HTTPException(status_code=404, detail="Room not found")
+    game = game_service.games.get(game_service.rooms[room_id].current_game_id)
+    taken = sorted(game.used_cards) if game and game.status == "waiting" else []
+    return JSONResponse({"success": True, "taken_cards": [str(x) for x in taken]})
+
+
+@app.get("/api/game/selected_count/{room_id}")
+async def get_selected_count(room_id: str):
+    if room_id not in game_service.rooms:
+        raise HTTPException(status_code=404, detail="Room not found")
+    game = game_service.games.get(game_service.rooms[room_id].current_game_id)
+    return {"count": len(game.players) if game else 0}
+
+
+@app.get("/api/game/state/{user_id}")
+async def get_game_state(user_id: str):
+    state = game_service.state_for_user(str(user_id))
+    return JSONResponse({"success": True, "state": state or {"in_game": False}})
+
 
 @app.post("/api/game/mark_number")
 async def mark_number(request: Request):
+    data = await request.json()
+    user_id = str(data.get("user_id") or "")
+    if not allow_action(user_id, per_second=3, per_minute=60):
+        raise HTTPException(status_code=429, detail="Too many requests")
     try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        number = data.get("number")
-        room_id = data.get("room_id")
-        
-        game_key = f"game:{room_id}:{user_id}"
-        
-        if game_key not in games_data:
-            return JSONResponse(
-                status_code=404,
-                content={"success": False, "error": "Game not found"}
-            )
-        
-        if number not in games_data[game_key]["marked_numbers"]:
-            games_data[game_key]["marked_numbers"].append(number)
-        
-        marked_count = len(games_data[game_key]["marked_numbers"])
-        has_bingo = marked_count >= 5
-        
-        return JSONResponse({
-            "success": True,
-            "marked": games_data[game_key]["marked_numbers"],
-            "bingo": has_bingo
-        })
-        
-    except Exception as e:
-        logger.error(f"Error marking number: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
+        number = int(data.get("number"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid number")
+    ok, message, bingo, state = await game_service.mark(user_id, number)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+    _sync_room_metadata()
+    return JSONResponse({"success": True, "message": message, "bingo": bingo, "marked": state["player"]["marked"], "game_state": state})
+
 
 @app.post("/api/game/call_bingo")
 async def call_bingo(request: Request):
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        room_id = data.get("room_id")
-        
-        game_key = f"game:{room_id}:{user_id}"
-        
-        if game_key not in games_data:
-            return JSONResponse(
-                status_code=404,
-                content={"success": False, "error": "Game not found"}
-            )
-        
-        marked_count = len(games_data[game_key]["marked_numbers"])
-        is_valid = marked_count >= 5
-        
-        if is_valid:
-            return JSONResponse({
-                "success": True,
-                "message": "BINGO! You win!",
-                "prize": 100
-            })
-        else:
-            return JSONResponse({
-                "success": False,
-                "message": "You don't have bingo yet!"
-            })
-            
-    except Exception as e:
-        logger.error(f"Error calling bingo: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
+    data = await request.json()
+    user_id = str(data.get("user_id") or "")
+    state = game_service.state_for_user(user_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Game not found")
+    player = state.get("player", {})
+    if player.get("has_bingo"):
+        return JSONResponse({"success": True, "message": "BINGO confirmed!", "prize": player.get("win_amount", 0), "game_state": state})
+    return JSONResponse({"success": False, "message": "No valid Bingo yet."}, status_code=400)
+
+
+@app.post("/api/game/check_bingo")
+async def check_bingo(request: Request):
+    data = await request.json()
+    user_id = str(data.get("user_id") or "")
+    state = game_service.state_for_user(user_id)
+    if not state:
+        return JSONResponse({"status": "error", "message": "Not in a game"}, status_code=404)
+    player = state.get("player", {})
+    if player.get("has_bingo"):
+        return {"status": "win", "prize": player.get("win_amount", 0), "message": "BINGO confirmed!"}
+    return {"status": "no_bingo", "message": "No valid Bingo yet."}
+
+
+@app.get("/api/game/{game_id}/cards")
+async def get_game_cards(game_id: str):
+    game = game_service.games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    return {"taken": [str(x) for x in game.used_cards], "count": len(game.used_cards)}
+
 
 @app.get("/api/leaderboard")
 async def get_leaderboard():
-    return JSONResponse([])
+    return JSONResponse(await db.get_leaderboard())
 
 @app.get("/bingo_game.html")
 async def bingo_game_redirect(request: Request):
@@ -1824,79 +1465,69 @@ async def bingo_game_redirect(request: Request):
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Bingo Game Page Not Found</h1><p>Please ensure bingo_game.html exists in the webapp folder.</p>", status_code=404)
 
-@app.get("/api/game/selected_count/{room_id}")
-async def get_selected_players_count(room_id: str):
-    try:
-        count = 0
-        for key, game in games_data.items():
-            if game.get("room_id") == room_id and game.get("card_number"):
-                count += 1
-        return {"count": count}
-    except Exception as e:
-        logger.error(f"Error getting selected count: {e}")
-        return {"count": 0}
-
 # ============= ADMIN API ENDPOINTS =============
 
 @app.post("/api/admin/login")
 async def admin_login(request: Request):
-    try:
-        data = await request.json()
-        password = data.get("password")
-        user_id = data.get("user_id")
-        
-        if not is_admin_user(user_id):
-            return JSONResponse(
-                status_code=403,
-                content={"success": False, "error": "Not authorized"}
-            )
-        
-        if password == os.getenv("ADMIN_PASSWORD", "JoyBingo@2025Admin"):
-            return JSONResponse({
-                "success": True,
-                "token": ADMIN_SECRET_KEY
-            })
-        else:
-            return JSONResponse({
-                "success": False,
-                "error": "Invalid password"
-            })
-    except Exception as e:
-        logger.error(f"Admin login error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+    data = await request.json()
+    password = str(data.get("password") or "")
+    user_id = data.get("user_id")
+    configured_password = os.getenv("ADMIN_PASSWORD")
+    if not configured_password or not ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Admin authentication is not configured")
+    if not is_admin_user(int(user_id)):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    import hmac
+    if not hmac.compare_digest(password, configured_password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    return JSONResponse({"success": True, "token": ADMIN_SECRET_KEY})
+
+@app.get("/api/admin/deposits")
+async def admin_get_deposits(auth: bool = Depends(verify_admin_token)):
+    return JSONResponse(await db.get_pending_deposits())
+
+@app.post("/api/admin/deposits/{request_id}/approve")
+async def admin_approve_deposit(request_id: int, auth: bool = Depends(verify_admin_token)):
+    if not ADMIN_IDS or not await db.approve_deposit(request_id, ADMIN_IDS[0]):
+        raise HTTPException(status_code=400, detail="Deposit is invalid, already processed, or could not be approved")
+    return {"success": True}
+
+@app.post("/api/admin/deposits/{request_id}/reject")
+async def admin_reject_deposit(request_id: int, auth: bool = Depends(verify_admin_token)):
+    if not ADMIN_IDS or not await db.reject_deposit(request_id, ADMIN_IDS[0]):
+        raise HTTPException(status_code=400, detail="Deposit is invalid or already processed")
+    return {"success": True}
+
+@app.get("/api/admin/withdrawals")
+async def admin_get_withdrawals(auth: bool = Depends(verify_admin_token)):
+    return JSONResponse(await db.get_pending_withdrawals())
+
+@app.post("/api/admin/withdrawals/{request_id}/approve")
+async def admin_approve_withdrawal(request_id: int, auth: bool = Depends(verify_admin_token)):
+    if not ADMIN_IDS or not await db.approve_withdrawal(request_id, ADMIN_IDS[0]):
+        raise HTTPException(status_code=400, detail="Withdrawal is invalid or already processed")
+    return {"success": True}
+
+@app.post("/api/admin/withdrawals/{request_id}/reject")
+async def admin_reject_withdrawal(request_id: int, auth: bool = Depends(verify_admin_token)):
+    if not ADMIN_IDS or not await db.reject_withdrawal(request_id, ADMIN_IDS[0]):
+        raise HTTPException(status_code=400, detail="Withdrawal is invalid or already processed")
+    return {"success": True}
 
 @app.get("/api/admin/dashboard")
 async def admin_dashboard(auth: bool = Depends(verify_admin_token)):
-    try:
-        total_users = await db.get_user_count()
-        active_games = len([g for g in games_data.values() if g.get("status") == "active"])
-        total_volume = sum(g.get("total_bet", 0) for g in games_data.values())
-        total_commission = total_volume * 0.2
-        user_change = 12
-        
-        revenue = {
-            "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "values": [1200, 1900, 1500, 2200, 2800, 3500, 4000]
-        }
-        
-        games_history = {
-            "labels": ["12AM", "4AM", "8AM", "12PM", "4PM", "8PM"],
-            "values": [3, 1, 4, 6, 8, 5]
-        }
-        
-        return JSONResponse({
-            "totalUsers": total_users,
-            "activeGames": active_games,
-            "totalVolume": total_volume,
-            "totalCommission": total_commission,
-            "userChange": user_change,
-            "volumeChange": 8.5,
-            "revenue": revenue,
-            "gamesHistory": games_history
-        })
-    except Exception as e:
-        logger.error(f"Admin dashboard error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    games = list(game_service.games.values())
+    active = [g for g in games if g.status == "active"]
+    total_volume = sum(g.total_bet for g in games)
+    total_commission = sum(g.commission for g in games)
+    return JSONResponse({
+        "totalUsers": await db.get_user_count(),
+        "activeGames": len(active),
+        "totalVolume": total_volume,
+        "totalCommission": total_commission,
+        "revenue": {"labels": [], "values": []},
+        "gamesHistory": {"labels": [], "values": []},
+    })
 
 @app.get("/api/admin/users")
 async def admin_get_users(
@@ -1971,6 +1602,8 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         data = await request.json()
         user_id = data.get("userId")
         amount = float(data.get("amount"))
+        if amount < 0:
+            raise HTTPException(status_code=400, detail="Amount must be non-negative")
         type_op = data.get("type")
         reason = data.get("reason", "")
         
@@ -1983,40 +1616,36 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         
         if type_op == "add":
             user_id_val = user.get("id") if isinstance(user, dict) else user.id
-            await db.update_balance(
-                user_id=user_id_val,
-                amount=amount,
-                transaction_type='admin_deposit',
-                description=f'Admin adjustment: {reason}'
-            )
+            if not await db.update_balance(
+                user_id=user_id_val, amount=amount, transaction_type='admin_deposit',
+                description=f'Admin adjustment: {reason}', reference=f'admin:{user_id}:add:{datetime.now().timestamp()}'
+            ):
+                raise HTTPException(status_code=400, detail="Balance update failed")
         elif type_op == "subtract":
             if current < amount:
                 return JSONResponse({"success": False, "error": "Insufficient balance"})
             user_id_val = user.get("id") if isinstance(user, dict) else user.id
-            await db.update_balance(
-                user_id=user_id_val,
-                amount=-amount,
-                transaction_type='admin_withdrawal',
-                description=f'Admin adjustment: {reason}'
-            )
+            if not await db.update_balance(
+                user_id=user_id_val, amount=-amount, transaction_type='admin_withdrawal',
+                description=f'Admin adjustment: {reason}', reference=f'admin:{user_id}:subtract:{datetime.now().timestamp()}'
+            ):
+                raise HTTPException(status_code=400, detail="Balance update failed")
         elif type_op == "set":
             diff = amount - current
             if diff > 0:
                 user_id_val = user.get("id") if isinstance(user, dict) else user.id
-                await db.update_balance(
-                    user_id=user_id_val,
-                    amount=diff,
-                    transaction_type='admin_deposit',
-                    description=f'Admin set balance to {amount}: {reason}'
-                )
+                if not await db.update_balance(
+                    user_id=user_id_val, amount=diff, transaction_type='admin_deposit',
+                    description=f'Admin set balance to {amount}: {reason}', reference=f'admin:{user_id}:set:{datetime.now().timestamp()}'
+                ):
+                    raise HTTPException(status_code=400, detail="Balance update failed")
             elif diff < 0:
                 user_id_val = user.get("id") if isinstance(user, dict) else user.id
-                await db.update_balance(
-                    user_id=user_id_val,
-                    amount=diff,
-                    transaction_type='admin_withdrawal',
-                    description=f'Admin set balance to {amount}: {reason}'
-                )
+                if not await db.update_balance(
+                    user_id=user_id_val, amount=diff, transaction_type='admin_withdrawal',
+                    description=f'Admin set balance to {amount}: {reason}', reference=f'admin:{user_id}:set:{datetime.now().timestamp()}'
+                ):
+                    raise HTTPException(status_code=400, detail="Balance update failed")
         
         updated_user = await db.get_user(user_id)
         new_balance = updated_user.get("balance", 0)
@@ -2033,76 +1662,50 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
 
 @app.post("/api/admin/toggle-ban")
 async def admin_toggle_ban(request: Request, auth: bool = Depends(verify_admin_token)):
-    try:
-        data = await request.json()
-        user_id = data.get("userId")
-        
-        user = await db.get_user(user_id)
-        
-        if not user:
-            return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
-        
-        return JSONResponse({
-            "success": True,
-            "is_banned": False
-        })
-    except Exception as e:
-        logger.error(f"Admin toggle ban error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+    data = await request.json()
+    target_id = str(data.get("userId") or "")
+    user = await db.get_user(target_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_status = not bool(user.get("is_banned"))
+    # The authenticated token contains the admin ID only in the legacy secret-token flow,
+    # so use the configured primary admin as the audit actor.
+    admin_id = ADMIN_IDS[0] if ADMIN_IDS else None
+    if admin_id is None or not await db.set_user_banned(target_id, new_status, admin_id):
+        raise HTTPException(status_code=500, detail="Could not update ban status")
+    return JSONResponse({"success": True, "is_banned": new_status})
 
 @app.get("/api/admin/games")
-async def admin_get_games(
-    search: str = "",
-    status: str = "all",
-    room: str = "all",
-    auth: bool = Depends(verify_admin_token)
-):
-    try:
-        game_list = []
-        for game_id, game in games_data.items():
-            if search and search not in game_id:
-                continue
-            if status != "all" and game.get("status") != status:
-                continue
-            
-            duration = 0
-            if game.get("started_at") and game.get("finished_at"):
-                start = datetime.fromisoformat(game["started_at"])
-                end = datetime.fromisoformat(game["finished_at"])
-                duration = int((end - start).total_seconds())
-            
-            game_list.append({
-                "game_id": game_id,
-                "room": game.get("room_id", "unknown"),
-                "status": game.get("status", "unknown"),
-                "players": 1,
-                "max_players": 400,
-                "prize_pool": game.get("prize_pool", 0),
-                "duration": duration,
-                "winners": len(game.get("winners", []))
-            })
-        
-        return JSONResponse(game_list)
-    except Exception as e:
-        logger.error(f"Admin get games error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+async def admin_get_games(search: str = "", status: str = "all", room: str = "all", auth: bool = Depends(verify_admin_token)):
+    result = []
+    for game in game_service.games.values():
+        if search and search not in game.game_id:
+            continue
+        if status != "all" and game.status != status:
+            continue
+        if room != "all" and game.room.room_id != room:
+            continue
+        duration = 0
+        if game.started_at and game.finished_at:
+            duration = int((game.finished_at - game.started_at).total_seconds())
+        result.append({
+            "game_id": game.game_id, "room": game.room.room_id, "status": game.status,
+            "players": len(game.players), "max_players": game.room.max_players,
+            "prize_pool": game.prize_pool, "duration": duration, "winners": len(game.winners)
+        })
+    return JSONResponse(result)
 
 @app.post("/api/admin/end-game")
 async def admin_end_game(request: Request, auth: bool = Depends(verify_admin_token)):
-    try:
-        data = await request.json()
-        game_id = data.get("gameId")
-        
-        if game_id not in games_data:
-            return JSONResponse(status_code=404, content={"success": False, "error": "Game not found"})
-        
-        games_data[game_id]["status"] = "finished"
-        games_data[game_id]["finished_at"] = datetime.now().isoformat()
-        
-        return JSONResponse({"success": True})
-    except Exception as e:
-        logger.error(f"Admin end game error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+    data = await request.json()
+    game_id = str(data.get("gameId") or "")
+    game = game_service.games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    if not await game_service.cancel_and_refund(game_id):
+        raise HTTPException(status_code=400, detail="Game cannot be cancelled or refunds failed")
+    _sync_room_metadata()
+    return JSONResponse({"success": True, "game_id": game_id, "status": "cancelled"})
 
 @app.get("/api/admin/transactions")
 async def admin_get_transactions(
@@ -2118,10 +1721,13 @@ async def admin_get_transactions(
         if type != "all":
             transactions = [t for t in transactions if t.get('type') == type]
         
-        today = datetime.now().strftime("%Y-%m-%d")
-        today_deposits = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'deposit' and t.get('created_at', '').startswith(today))
-        today_withdrawals = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'withdrawal' and t.get('created_at', '').startswith(today))
-        today_wins = sum(t.get('amount', 0) for t in transactions if t.get('type') == 'win' and t.get('created_at', '').startswith(today))
+        today = datetime.now().date()
+        def is_today(tx):
+            value = tx.get("created_at")
+            return hasattr(value, "date") and value.date() == today
+        today_deposits = sum(float(t.get('amount', 0)) for t in transactions if t.get('type') == 'deposit' and is_today(t))
+        today_withdrawals = sum(float(t.get('amount', 0)) for t in transactions if t.get('type') == 'withdrawal' and is_today(t))
+        today_wins = sum(float(t.get('amount', 0)) for t in transactions if t.get('type') == 'win' and is_today(t))
         net_revenue = today_deposits - today_withdrawals
         
         return JSONResponse({
@@ -2330,68 +1936,81 @@ manager = ConnectionManager()
 @app.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     await manager.connect(websocket, room_id, user_id)
+    poll_task = None
     try:
+        state = game_service.state_for_user(user_id)
         await websocket.send_json({
             "type": "connected",
             "message": f"Connected to room {room_id}",
             "room_data": rooms_data.get(room_id, {}),
-            "timestamp": datetime.now().isoformat()
+            "game_state": state,
+            "timestamp": datetime.now().isoformat(),
         })
-        
+
+        async def state_poller():
+            last_signature = None
+            while True:
+                await asyncio.sleep(1)
+                current = game_service.state_for_user(user_id)
+                if current is None:
+                    continue
+                signature = json.dumps(current, sort_keys=True, default=str)
+                if signature != last_signature:
+                    await websocket.send_json({"type": "game_state", "data": current})
+                    last_signature = signature
+
+        poll_task = asyncio.create_task(state_poller())
         while True:
             data = await websocket.receive_text()
-            try:
-                message = json.loads(data)
-                logger.info(f"WebSocket message from {user_id}: {message.get('type')}")
-                
-                if message.get("type") == "ping":
-                    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
-                
-                elif message.get("type") == "mark_number":
-                    number = message.get("number")
-                    await manager.broadcast(room_id, {
-                        "type": "number_marked",
-                        "user_id": user_id,
-                        "number": number,
-                        "timestamp": datetime.now().isoformat()
-                    }, exclude_user=user_id)
-                    
-                    await websocket.send_json({
-                        "type": "mark_confirmed",
-                        "number": number,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                
-                elif message.get("type") == "call_bingo":
-                    await manager.broadcast(room_id, {
-                        "type": "bingo_called",
-                        "user_id": user_id,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    
-                    await websocket.send_json({
-                        "type": "bingo_confirmed",
-                        "message": "Bingo called! Verifying...",
-                        "timestamp": datetime.now().isoformat()
-                    })
-                
-                else:
-                    await websocket.send_json({
-                        "type": "ack",
-                        "received": message,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                
-            except json.JSONDecodeError:
+            message = json.loads(data)
+            msg_type = message.get("type")
+
+            if msg_type == "ping":
+                await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
+                continue
+
+            if msg_type in {"mark", "mark_number"}:
+                try:
+                    number = int(message.get("number"))
+                except (TypeError, ValueError):
+                    await websocket.send_json({"type": "error", "message": "Invalid number"})
+                    continue
+                ok, msg, bingo, state = await game_service.mark(user_id, number)
+                if not ok:
+                    await websocket.send_json({"type": "error", "message": msg})
+                    continue
+                await manager.broadcast(room_id, {
+                    "type": "number_marked", "user_id": user_id, "number": number,
+                    "timestamp": datetime.now().isoformat()
+                }, exclude_user=user_id)
+                await websocket.send_json({"type": "mark_confirmed", "number": number, "bingo": bingo, "data": state})
+                _sync_room_metadata()
+                continue
+
+            if msg_type in {"bingo", "call_bingo"}:
+                state = game_service.state_for_user(user_id)
+                if not state:
+                    await websocket.send_json({"type": "error", "message": "Not in a game"})
+                    continue
+                player = state.get("player", {})
                 await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON format"
+                    "type": "bingo_confirmed" if player.get("has_bingo") else "error",
+                    "message": "Bingo confirmed!" if player.get("has_bingo") else "No valid Bingo yet.",
+                    "prize": player.get("win_amount", 0),
+                    "data": state,
                 })
-                
+                continue
+
+            await websocket.send_json({"type": "ack", "received": message})
+    except json.JSONDecodeError:
+        await websocket.send_json({"type": "error", "message": "Invalid JSON format"})
     except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
+        pass
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error("WebSocket error: %s", e)
+    finally:
+        if poll_task:
+            poll_task.cancel()
         manager.disconnect(websocket, user_id)
 
 # Serve static files
