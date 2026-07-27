@@ -1,23 +1,15 @@
-name: joy-bingo-bot
-region: was
+name: joy-bingo
 services:
-  - name: bot
+  - name: app
     type: web
     instance_type: nano
-    env:
-      - key: BOT_TOKEN
-        value: ""
-      - key: WEBAPP_URL
-        value: "https://conceptual-debby-wond-7482233b.koyeb.app"
-      - key: ADMIN_IDS
-        value: "
-      - key: SUPABASE_URL
-        value: "https://blbphrttoopytpholold.supabase.co"
-      - key: SUPABASE_KEY
-        value: "sb_publishable_x3HntYTXjhOu1aETV7-nRg_ZTQnpxkf"
+    regions:
+      - fra
     ports:
       - port: 8000
+        protocol: http
     routes:
       - path: /
-    build_command: "pip install -r requirements-free.txt"
-    run_command: "python bot.py"
+        port: 8000
+    build_command: pip install --no-cache-dir -r requirements-free.txt
+    run_command: uvicorn free_deploy:app --host 0.0.0.0 --port $PORT
