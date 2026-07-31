@@ -1174,15 +1174,10 @@
         async function loadCards() {
             try {
                 let takenCardsData = [];
-                try {
-                    const response = await fetch(`/api/game/taken_cards/${roomId}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        takenCardsData = data.taken_cards || [];
-                    }
-                } catch (e) {
-                    takenCardsData = Array.from({length: 40}, () => Math.floor(Math.random() * 400) + 1).map(String);
-                }
+                const response = await fetch(`/api/game/taken_cards/${roomId}`);
+                if (!response.ok) throw new Error('Could not load card availability');
+                const data = await response.json();
+                takenCardsData = data.taken_cards || [];
                 
                 takenCards = takenCardsData;
                 
@@ -1255,11 +1250,10 @@
                         }
                     }
                 } catch (e) {
-                    console.log('Using demo card');
+                    throw new Error('Could not reserve this card. Please try again.');
                 }
-                
                 if (!cardData) {
-                    cardData = generateDemoCard(cardNum);
+                    throw new Error('Server did not return the selected card.');
                 }
                 
                 currentCard = cardData;

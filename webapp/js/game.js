@@ -117,9 +117,9 @@ class BingoGame {
             grid.appendChild(cell);
         });
         
-        // Add numbers (5x5 grid)
-        for (let col = 0; col < 5; col++) {
-            for (let row = 0; row < 5; row++) {
+        // Add numbers row-by-row so the stored row-major card is displayed correctly.
+        for (let row = 0; row < 5; row++) {
+            for (let col = 0; col < 5; col++) {
                 const index = row * 5 + col;
                 const number = this.state.card[index];
                 
@@ -150,17 +150,9 @@ class BingoGame {
             return;
         }
         
-        // Send to server
+        // The server is authoritative. Do not optimistically mark a number;
+        // it may not have been called yet or may not belong to this card.
         this.ws.send('mark', { number });
-        
-        // Optimistic update
-        this.state.marked.add(number);
-        this.updateCellMarked(number);
-        
-        // Check for bingo locally
-        if (this.checkBingo()) {
-            this.callBingo();
-        }
     }
 
     updateCellMarked(number) {
@@ -173,8 +165,12 @@ class BingoGame {
     }
 
     checkBingo() {
-        // Check all numbers marked
-        return this.state.card.every(num => this.state.marked.has(num));
+        const marked = this.state.marked;
+        const lines = [];
+        for (let row = 0; row < 5; row++) lines.push([0,1,2,3,4].map(col => row * 5 + col));
+        for (let col = 0; col < 5; col++) lines.push([0,1,2,3,4].map(row => row * 5 + col));
+        lines.push([0,6,12,18,24], [4,8,12,16,20]);
+        return lines.some(line => line.every(i => marked.has(this.state.card[i])));
     }
 
     callBingo() {
@@ -287,8 +283,8 @@ class BingoGame {
     }
 
     async fetchAvailableCards() {
-        // Fetch from server
-        const response = await fetch(`/api/game/${this.config.gameId}/cards`);
+        const response = await fetch(`/api/game/taken_cards/${this.config.roomId}`);
+        if (!response.ok) return { taken: [] };
         return await response.json();
     }
 }
