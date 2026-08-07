@@ -137,7 +137,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     
     if not existing_user:
         keyboard = [
@@ -183,7 +183,7 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     if existing_user:
         await update.message.reply_text(
             "✅ You are already registered! Use /start to access the main menu.",
@@ -346,7 +346,7 @@ async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     
     if not existing_user:
         keyboard = [[InlineKeyboardButton("📝 Register First", callback_data="register")]]
@@ -370,7 +370,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     
     try:
-        user = await db.get_user(user_id)
+        user = await db.get_user_by_telegram_id(user_id)
         
         if not user:
             keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -417,7 +417,7 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /deposit command - Deposit funds with payment options"""
     user_id = str(update.effective_user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     
     if not existing_user:
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -453,7 +453,7 @@ async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /withdraw command - Withdraw funds with payment options"""
     user_id = str(update.effective_user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     
     if not existing_user:
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -491,7 +491,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
     
-    existing_user = await db.get_user(user_id)
+    existing_user = await db.get_user_by_telegram_id(user_id)
     
     if not existing_user:
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -601,7 +601,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     
     if data == "register":
-        existing_user = await db.get_user(user_id)
+        existing_user = await db.get_user_by_telegram_id(user_id)
         if existing_user:
             await query.edit_message_text(
                 "✅ You are already registered! Use /start to access the main menu.",
@@ -801,7 +801,7 @@ Ready to play? Click the Register button below to get your free {STARTING_BALANC
         return
     
     # Get user from database for other callbacks
-    db_user = await db.get_user(user_id)
+    db_user = await db.get_user_by_telegram_id(user_id)
     
     if not db_user:
         keyboard = [[InlineKeyboardButton("📝 Register Now", callback_data="register")]]
@@ -1072,7 +1072,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
     
-    db_user = await db.get_user(user_id)
+    db_user = await db.get_user_by_telegram_id(user_id)
     
     # Support message handler - forward to admin
     if context.user_data.get('awaiting_support_message'):
@@ -1143,7 +1143,7 @@ Reply to this user by sending /reply_{user_id} [your message]
                             description=f'Payment {transaction_id} via {method}'
                         )
                         
-                        updated_user = await db.get_user(user_id)
+                        updated_user = await db.get_user_by_telegram_id(user_id)
                         new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                         
                         await update.message.reply_text(
@@ -1225,7 +1225,7 @@ Reply to this user by sending /reply_{user_id} [your message]
                         description=f'Withdrawal to Telebirr {phone}'
                     )
                     
-                    updated_user = await db.get_user(user_id)
+                    updated_user = await db.get_user_by_telegram_id(user_id)
                     new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                     
                     await update.message.reply_text(
@@ -1300,7 +1300,7 @@ Reply to this user by sending /reply_{user_id} [your message]
                         description=f'Withdrawal to CBE Birr {phone}'
                     )
                     
-                    updated_user = await db.get_user(user_id)
+                    updated_user = await db.get_user_by_telegram_id(user_id)
                     new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                     
                     await update.message.reply_text(
@@ -1361,7 +1361,7 @@ Reply to this user by sending /reply_{user_id} [your message]
                     description=f'Deposit of {amount} Birr'
                 )
                 
-                updated_user = await db.get_user(user_id)
+                updated_user = await db.get_user_by_telegram_id(user_id)
                 new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                 
                 await update.message.reply_text(
@@ -1404,7 +1404,7 @@ Reply to this user by sending /reply_{user_id} [your message]
                     description=f'Withdrawal request of {amount} Birr'
                 )
                 
-                updated_user = await db.get_user(user_id)
+                updated_user = await db.get_user_by_telegram_id(user_id)
                 new_balance = updated_user.get("balance", 0) if isinstance(updated_user, dict) else updated_user.balance
                 
                 await update.message.reply_text(
@@ -1941,7 +1941,15 @@ async def admin_get_users(
 @app.get("/api/admin/users/{user_id}")
 async def admin_get_user(user_id: str, auth: bool = Depends(verify_admin_token)):
     try:
-        user = await db.get_user(user_id)
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(user_id)
         
         if not user:
             return JSONResponse(status_code=404, content={"error": "User not found"})
@@ -1974,12 +1982,20 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
         type_op = data.get("type")
         reason = data.get("reason", "")
         
-        user = await db.get_user(user_id)
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(str(user_id))
         
         if not user:
             return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})
         
-        current = user.get("balance", 0)
+        current = float(user.get("balance", 0))
         
         if type_op == "add":
             user_id_val = user.get("id") if isinstance(user, dict) else user.id
@@ -2018,10 +2034,10 @@ async def admin_adjust_balance(request: Request, auth: bool = Depends(verify_adm
                     description=f'Admin set balance to {amount}: {reason}'
                 )
         
-        updated_user = await db.get_user(user_id)
+        updated_user = await db.get_user_by_id(user_id_val)
         new_balance = updated_user.get("balance", 0)
         
-        logger.info(f"Admin adjusted balance for user {user_id}: {current} -> {new_balance} ({reason})")
+        logger.info(f"Admin adjusted balance for user {user_id_val}: {current} -> {new_balance} ({reason})")
         
         return JSONResponse({
             "success": True,
@@ -2037,7 +2053,15 @@ async def admin_toggle_ban(request: Request, auth: bool = Depends(verify_admin_t
         data = await request.json()
         user_id = data.get("userId")
         
-        user = await db.get_user(user_id)
+        user = None
+        try:
+            int_id = int(user_id)
+            user = await db.get_user_by_id(int_id)
+        except (ValueError, TypeError):
+            pass
+
+        if not user:
+            user = await db.get_user_by_telegram_id(str(user_id))
         
         if not user:
             return JSONResponse(status_code=404, content={"success": False, "error": "User not found"})

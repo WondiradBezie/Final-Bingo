@@ -238,7 +238,7 @@ class DatabaseManager:
             logger.error(f"Error updating balance: {e}")
             return False
     
-    async def get_user(self, telegram_id: str) -> Optional[Dict]:
+    async def get_user_by_telegram_id(self, telegram_id: str) -> Optional[Dict]:
         """Get user by telegram ID"""
         try:
             async with self.pool.acquire() as conn:
@@ -246,9 +246,36 @@ class DatabaseManager:
                     "SELECT * FROM users WHERE telegram_id = $1",
                     telegram_id
                 )
-                return dict(row) if row else None
+                if row:
+                    user = dict(row)
+                    # Convert decimals to float
+                    for key in ['balance', 'total_deposits', 'total_withdrawals', 'total_wins']:
+                        if user.get(key) is not None:
+                            user[key] = float(user[key])
+                    return user
+                return None
         except Exception as e:
-            logger.error(f"Error getting user: {e}")
+            logger.error(f"Error getting user by telegram_id: {e}")
+            return None
+
+    async def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Get user by internal ID"""
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT * FROM users WHERE id = $1",
+                    user_id
+                )
+                if row:
+                    user = dict(row)
+                    # Convert decimals to float
+                    for key in ['balance', 'total_deposits', 'total_withdrawals', 'total_wins']:
+                        if user.get(key) is not None:
+                            user[key] = float(user[key])
+                    return user
+                return None
+        except Exception as e:
+            logger.error(f"Error getting user by id: {e}")
             return None
     
     async def create_user(self, telegram_id: str, username: str = None, 
@@ -264,11 +291,15 @@ class DatabaseManager:
                         telegram_id
                     )
                     if existing:
-                        user = await conn.fetchrow(
+                        row = await conn.fetchrow(
                             "SELECT * FROM users WHERE telegram_id = $1",
                             telegram_id
                         )
-                        return dict(user)
+                        user = dict(row)
+                        for key in ['balance', 'total_deposits', 'total_withdrawals', 'total_wins']:
+                            if user.get(key) is not None:
+                                user[key] = float(user[key])
+                        return user
                     
                     # Generate referral code
                     referral_code = f"REF{telegram_id[-6:]}{datetime.now().strftime('%m%d')}"
@@ -284,6 +315,9 @@ class DatabaseManager:
                     datetime.now(), datetime.now())
                     
                     user = dict(row)
+                    for key in ['balance', 'total_deposits', 'total_withdrawals', 'total_wins']:
+                        if user.get(key) is not None:
+                            user[key] = float(user[key])
                     
                     # Record welcome bonus transaction
                     await conn.execute("""
@@ -424,9 +458,40 @@ class DatabaseManager:
                     ORDER BY created_at DESC
                     LIMIT $1 OFFSET $2
                 """, limit, offset)
-                return [dict(row) for row in rows]
+
+                users = []
+                for row in rows:
+                    user = dict(row)
+                    for key in ['balance', 'total_deposits', 'total_withdrawals', 'total_wins']:
+                        if user.get(key) is not None:
+                            user[key] = float(user[key])
+                    users.append(user)
+                return users
         except Exception as e:
             logger.error(f"Error getting all users: {e}")
+            return []
+
+    async def get_all_games(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get all games for admin"""
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM games
+                    ORDER BY created_at DESC
+                    LIMIT $1 OFFSET $2
+                """, limit, offset)
+
+                games = []
+                for row in rows:
+                    game = dict(row)
+                    # Convert decimals to float
+                    for key in ['card_price', 'total_bet', 'prize_pool', 'commission']:
+                        if game.get(key) is not None:
+                            game[key] = float(game[key])
+                    games.append(game)
+                return games
+        except Exception as e:
+            logger.error(f"Error getting all games: {e}")
             return []
     
     async def get_all_transactions(self, limit: int = 100, offset: int = 0) -> List[Dict]:
@@ -440,7 +505,15 @@ class DatabaseManager:
                     ORDER BY t.created_at DESC
                     LIMIT $1 OFFSET $2
                 """, limit, offset)
-                return [dict(row) for row in rows]
+
+                transactions = []
+                for row in rows:
+                    tx = dict(row)
+                    for key in ['amount', 'balance_after']:
+                        if tx.get(key) is not None:
+                            tx[key] = float(tx[key])
+                    transactions.append(tx)
+                return transactions
         except Exception as e:
             logger.error(f"Error getting all transactions: {e}")
             return []
